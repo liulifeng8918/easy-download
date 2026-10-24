@@ -4,6 +4,12 @@
 
 当前正式版本：**1.0.0**
 
+下载入口：
+
+- [Windows 安装包](https://github.com/liulifeng8918/easy-download/releases/download/v1.0.0/EasyDownload-1.0.0-x64.exe)
+- [绿色版 ZIP](https://github.com/liulifeng8918/easy-download/releases/download/v1.0.0/EasyDownload-1.0.0-x64-portable-final.zip)
+- [完整 Release 页面](https://github.com/liulifeng8918/easy-download/releases/tag/v1.0.0)
+
 ## 下载使用
 
 请在 GitHub Releases 下载绿色版 ZIP 或 Windows 安装包。绿色版解压后双击 `易下载.exe` 即可启动，不需要另外安装 Python、Node.js 或 Electron。
