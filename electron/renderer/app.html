@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'none'">
+  <title>易下载</title>
+  <link rel="stylesheet" href="ui.css">
+  <link rel="stylesheet" href="ui-pro.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="主导航">
+      <div class="side-brand"><span class="brand-mark">↓</span><div><strong>易下载</strong><small>EASY DOWNLOAD</small></div></div>
+      <nav class="side-nav">
+        <button id="home" class="nav-item active" data-page="home"><span class="nav-dot">⌂</span>首页</button>
+        <button id="tasksNav" class="nav-item" data-page="tasks"><span class="nav-dot">≡</span>下载任务</button>
+        <button id="pro" class="nav-item" data-page="pro"><span class="nav-dot">◆</span>专业版</button>
+        <button id="settings" class="nav-item" data-page="settings"><span class="nav-dot">⚙</span>设置</button>
+      </nav>
+      <div class="side-footer"><span class="status-dot"></span><span id="sideLicenseStatus">免费版</span></div>
+    </aside>
+
+    <section class="app-main">
+      <header class="topbar"><div><span class="crumb">易下载</span><span id="pageTitle" class="crumb-current">首页</span></div><button id="activate" class="license"><span id="licenseStatus">检查授权中</span> ↗</button></header>
+
+      <main id="page-home" class="page active-page">
+        <div class="hero"><img class="hero-backdrop" src="assets/browser-download-hero.png" alt="浏览器播放器与右键下载演示"><div class="hero-copy"><p class="eyebrow">轻松下载 · 精彩随行</p><h1 class="hero-headline"><span>你浏览器能播放的，</span><span>我们就能下载</span></h1><p class="slogan" hidden>你浏览器能播放的，我们就能下载</p><p class="muted hero-description">支持主流视频网站，粘贴链接即可下载。<br>高清视频、批量下载、字幕翻译，一站式完成。</p><p class="muted small hero-boundary">仅适用于公开且有权访问的内容；加密保护和网站规则可能限制下载。</p></div><span class="hero-float-note">浏览器右键 /<br>扩展可直接下载</span></div>
+        <section class="card download-card">
+          <div class="section-title"><h2>新建下载</h2><span class="muted small">链接 → 参数 → 下载</span></div>
+          <form id="downloadForm" novalidate><div class="url-row"><input id="url" aria-label="视频链接" placeholder="把视频链接粘贴到这里…" autocomplete="off"><button id="download" type="submit" class="primary">开始下载</button></div><div class="quick-settings"><label for="quality"><span>画质</span><select id="quality"><option value="best">最佳画质</option><option value="1080">1080p 高清</option><option value="720">720p</option><option value="audio">音频 · MP3</option></select></label><label for="format"><span>格式</span><select id="format"><option value="mp4">视频 · MP4</option><option value="mkv">视频 · MKV</option><option value="mp3">音频 · MP3</option></select></label><label class="directory-field"><span>保存目录</span><div class="input-action"><input id="outputDir" readonly aria-label="下载保存目录"><button id="chooseDir" type="button" class="text">更改</button></div></label><label for="proxyMode"><span>代理策略</span><select id="proxyMode"><option value="auto">自动检测代理</option><option value="direct">直接连接</option><option value="saved">使用已保存代理</option></select></label></div><p class="preference-hint">这些参数会保存为默认偏好，浏览器扩展的“下载当前视频”也会沿用。</p><div class="browser-entry"><span class="browser-entry-icon">↗</span><span><b>浏览器扩展可直接下载</b><small>页面空白处右键“下载此视频”，或打开扩展选择“下载当前视频”。</small></span><button id="openExtensionFromHome" type="button" class="text">查看设置</button></div></form>
+          <p id="message" class="feedback" role="status"></p>
+        </section>
+        <button id="openProBanner" class="vip-banner"><span><b>专业版</b>：批量下载、关键词搜索、字幕翻译、自动整理</span><strong>查看专业版 →</strong></button>
+        <section class="card home-tasks"><div class="section-title"><div class="inline"><h2>下载任务</h2><span id="homeTaskStatus" class="badge">0 个运行中</span></div><button id="viewAllTasks" class="text">查看全部 →</button></div><div id="homeTasks" class="compact-tasks"></div></section>
+      </main>
+
+      <main id="page-tasks" class="page" hidden>
+        <div class="page-heading"><div><p class="eyebrow">统一任务中心</p><h1>下载任务</h1><p class="muted">免费单链接和专业版批量任务都在这里管理。</p></div><div class="task-actions"><button id="pauseAll">暂停全部</button><button id="resumeAll">继续全部</button><button id="clearTasks" class="text">清空记录</button></div></div>
+        <div class="stat-grid"><div class="stat-card"><small>运行中</small><strong id="statRunning">0</strong></div><div class="stat-card"><small>等待中</small><strong id="statQueued">0</strong></div><div class="stat-card"><small>已完成</small><strong id="statCompleted">0</strong></div><div class="stat-card danger"><small>失败</small><strong id="statFailed">0</strong></div></div>
+        <section class="card task-table-card"><div class="table-head"><span>视频名称</span><span>来源网站</span><span>状态</span><span>进度</span><span>操作</span></div><div id="taskTable" class="task-table"></div><div id="taskEmpty" class="empty" hidden><b>↓</b><p>还没有下载任务</p><small>从首页粘贴一个链接开始</small></div></section>
+        <section class="diagnostic-card"><div><b>失败诊断</b><p class="muted small">登录、代理、链接过期等原因会在任务行中给出下一步建议。</p></div><div class="diagnostic-hint">需要登录：先在浏览器登录对应网站，再同步登录状态。</div><div class="diagnostic-hint">网络超时：检查网络或代理后，点击任务行的“重试”。</div></section>
+      </main>
+
+      <main id="page-pro" class="page" hidden>
+        <div class="page-heading"><div><p class="eyebrow">VIP 专业工作流</p><h1>专业版工作台</h1><p class="muted">从找到内容，到按画质下载，再到字幕和文件整理，一次完成。</p></div><span id="proLicenseBadge" class="vip-badge">VIP 未激活</span></div>
+        <div class="workflow-stepper" role="tablist" aria-label="专业版工作流">
+          <button class="pro-tab active" data-pro-tab="batch" role="tab"><span>1</span><b>来源</b><small>粘贴链接或搜索内容</small></button>
+          <button class="pro-tab" data-pro-tab="queue" role="tab"><span>2</span><b>队列</b><small>确认下载列表</small></button>
+          <button class="pro-tab" data-pro-tab="subtitle" role="tab"><span>3</span><b>整理输出</b><small>下载并自动整理</small></button>
+        </div>
+
+        <section id="pro-panel-batch" class="pro-panel">
+          <div class="pro-source-layout">
+            <div class="card pro-source-card">
+              <div class="section-title"><div><h2>添加来源</h2><p class="muted small">粘贴视频链接、分享文案，或先搜索已登记的网站。</p></div><span class="vip-badge">VIP</span></div>
+              <form id="batchForm" novalidate>
+                <textarea id="batchInput" rows="7" placeholder="把链接或分享文本粘贴到这里…&#10;支持多条链接，每行一个"></textarea>
+                <div class="source-actions"><button id="submitBatch" type="submit" class="primary">＋ 加入下载队列</button><button id="openSearchPanel" type="button">⌕ 关键词搜索</button></div>
+                <div id="proSearchPanel" class="pro-search-panel" hidden>
+                  <div class="search-panel-title"><b>搜索已登记网站</b><span class="muted small">只搜索你主动登记的网站</span></div>
+                  <div id="searchDomains" class="search-domains"><span class="muted small">正在读取已登记网站…</span></div>
+                  <div class="search-row"><input id="searchKeyword" placeholder="例如：历史纪录片"><button id="searchSubmit" class="primary" type="button">搜索</button></div>
+                  <div class="search-toolbar"><button id="searchSelectAll" type="button">全选结果</button><button id="searchClearSelection" type="button">取消选择</button><button id="searchDownloadSelected" class="primary" type="button">加入下载队列</button></div>
+                  <div id="searchResults" class="search-results"><div class="empty"><p>输入关键词开始搜索</p><small>搜索结果会显示标题和所属网站，勾选后加入队列。</small></div></div>
+                  <p id="searchMessage" class="feedback" role="status"></p>
+                </div>
+                <div class="pro-download-settings">
+                  <h3>本次下载设置</h3>
+                  <div class="pro-setting-grid"><label>画质<select id="batchQuality"><option value="best">最佳画质</option><option value="2160">4K（如果来源提供）</option><option value="1080">1080p</option><option value="720">720p</option><option value="audio">音频 · MP3</option></select></label><label>格式<select id="batchFormat"><option value="mp4">视频 · MP4</option><option value="mkv">视频 · MKV</option><option value="mp3">音频 · MP3</option></select></label><label class="grow">保存位置<input id="batchOutputDir" readonly></label><button id="batchChooseDir" type="button">选择目录</button></div>
+                  <div class="check-row"><label><input id="batchAutoSubtitle" type="checkbox" checked> 自动获取字幕</label><label><input id="batchDedupe" type="checkbox" checked> 跳过重复文件</label><input id="batchPrecheck" type="checkbox" hidden checked><button id="importBatch" type="button" hidden>导入 TXT</button><button id="playlistBatch" type="button" hidden>播放列表</button></div>
+                </div>
+                <div class="form-footer"><span id="batchCount" class="muted small">等待输入链接</span><button id="batchSaveRule" type="button">保存为默认规则</button></div>
+                <p id="batchMessage" class="feedback" role="status"></p>
+              </form>
+            </div>
+            <aside class="card pro-queue-preview"><div class="section-title"><div><h2>当前队列</h2><p id="proQueuePreviewCount" class="muted small">共 0 个任务</p></div><button id="proViewQueue" type="button" class="text">查看全部 →</button></div><div id="proQueuePreview" class="queue-preview-list"><div class="empty"><p>队列还是空的</p><small>加入链接后会显示在这里</small></div></div></aside>
+          </div>
+        </section>
+
+        <section id="pro-panel-queue" class="pro-panel" hidden>
+          <div class="card pro-queue-card"><div class="section-title"><div><h2>下载队列</h2><p class="muted small">先确认每个任务的画质与格式，再开始下载。</p></div><span id="queuePlanCount" class="badge">0 个任务</span></div>
+            <div class="queue-toolbar"><label>全部画质<select id="proQueueQualityAll"><option value="keep">保持每项设置</option><option value="best">最佳画质</option><option value="1080">1080p</option><option value="720">720p</option></select></label><label>同时下载<select id="batchConcurrency"><option>1</option><option selected>2</option><option>3</option><option>5</option></select></label><label>失败后自动重试<select id="batchRetry"><option>0</option><option>1</option><option selected>3</option></select></label><button id="proQueueStart" type="button" class="primary">▶ 开始全部下载</button><button id="proQueueRemoveCompleted" type="button">移除已完成</button></div>
+            <div class="pro-queue-table-head"><span></span><span>视频信息</span><span>画质</span><span>格式</span><span>保存位置</span><span>状态</span><span>操作</span></div><div id="proQueueList" class="pro-queue-list"><div class="empty"><p>队列还是空的</p><small>返回来源步骤添加链接。</small></div></div>
+            <div class="queue-footer"><button id="proQueueRetryFailed" type="button">⟳ 仅重试失败项</button><button id="proQueueToOutput" type="button" class="primary">下一步：整理输出 →</button></div>
+            <p id="queueMessage" class="feedback" role="status"></p>
+          </div>
+        </section>
+
+        <section id="pro-panel-subtitle" class="pro-panel" hidden>
+          <div class="card output-card"><div class="section-title"><div><h2>整理输出</h2><p class="muted small">下载完成后，一次设置，自动整理到可继续使用的文件。</p></div><span id="outputCompletedCount" class="badge">已完成 0 个任务</span></div>
+            <div class="output-toolbar"><button id="outputOpenFolder" type="button" class="primary">▣ 应用并打开文件夹</button></div>
+            <div class="output-layout"><div class="completed-files"><h3>已完成的文件</h3><div id="outputTaskList" class="output-task-list"><div class="empty"><p>还没有完成的视频</p><small>完成下载后可在这里统一处理。</small></div></div></div><div class="output-rules"><h3>输出规则</h3><label>文件命名<select id="outputNaming"><option value="date-title">日期 - 标题</option><option value="site-title">网站 - 标题</option><option value="title">仅标题</option></select></label><label>自动分类<select id="outputCategory"><option value="site-topic">按网站 / 主题</option><option value="site">按网站</option><option value="none">不分类</option></select></label><div class="output-subtitle"><b>字幕</b><label class="checkbox"><input id="outputSaveOriginal" type="checkbox" checked> 保存原字幕文件</label><label class="checkbox"><input id="outputTranslate" type="checkbox"> 翻译字幕 <select id="outputLanguage"><option value="zh-CN">简体中文</option><option value="zh-TW">繁体中文</option><option value="en">English</option><option value="ja">日本語</option><option value="ko">한국어</option></select></label><b>字幕轨道</b><div class="radio-row"><label><input id="outputMerge" name="outputTrack" type="radio" value="merge" checked> 合并为独立轨道（MKV）</label><label><input name="outputTrack" type="radio" value="srt"> 同时生成 SRT</label></div><p id="subtitleHelper" class="muted small">独立字幕轨道不会重新压制画面；免费翻译服务优先；可在设置中更换翻译接口。</p></div></div></div>
+            <div class="output-bottom"><span id="outputExample" class="muted small">示例：2026-10-13_旅行日记_夏日海边.mkv</span><div><button id="outputSaveRule" type="button">保存为默认规则</button><button id="subtitleStart" type="button" class="primary">完成整理 →</button></div></div><p id="subtitleMessage" class="feedback" role="status"></p><select id="subtitleFile" hidden><option value="">请先完成一个视频下载</option></select><select id="subtitleLanguage" hidden><option value="zh-CN">简体中文</option></select><select id="subtitleProvider" hidden><option value="public">免费公共翻译（默认）</option><option value="custom">使用我的 API</option></select><input id="subtitleSaveSrt" type="checkbox" hidden checked><input id="subtitleMerge" type="checkbox" hidden checked></div>
+        </section>
+        <section id="pro-panel-rules" class="pro-panel" hidden><div class="card feature-card"><h2>项目规则</h2><p>项目规则已合并到“整理输出”的默认规则中。</p><label>项目名称<input id="ruleName" placeholder="例如：课程资料"></label><label>文件命名<input id="rulePattern" value="{网站}_{标题}_{日期}"></label><label>保存目录<input id="ruleDir" readonly></label><div class="form-footer"><span id="ruleMessage" class="muted small">可选效率功能</span><button id="saveRule" class="primary">保存规则</button></div></div></section>
+      </main>
+
+      <main id="page-settings" class="page" hidden>
+        <div class="page-heading"><div><p class="eyebrow">偏好与连接</p><h1>设置</h1><p class="muted">下载目录、连接状态、字幕服务和授权都在这里管理。</p></div></div>
+        <div class="settings-grid">
+          <section class="card settings-section wide browser-connect-section"><div class="browser-connect-heading"><div><p class="eyebrow">需要登录时使用</p><h2>连接 Chrome 和网站登录状态</h2><p class="muted small">公开视频不需要设置。只有下载时提示需要登录，才按下面步骤连接。</p></div><button id="openManualPdf" type="button" class="text">查看完整 PDF 手册 ↗</button></div><div class="connection-hero"><div class="connection-status"><span id="cookieStatus" class="badge">尚未连接</span><strong id="connectionStatusText">需要登录时，点击下面按钮</strong><small id="connectionStatusHint">易下载会打开 Chrome、扩展文件夹和连接向导，扩展加载后自动完成连接。</small></div><button id="connectChrome" type="button" class="primary">连接 Chrome</button></div><div class="paired-domains"><span>已发现的网站</span><div id="pairedDomains" class="domain-chips"><span class="muted small">连接后自动发现</span></div></div><div class="chrome-guide"><div class="chrome-step"><span>1</span><b>点击“连接 Chrome”</b><small>易下载会自动打开 Chrome 扩展页、连接向导和扩展文件夹。</small></div><div class="chrome-step"><span>2</span><b>加载已解压扩展</b><small>在 Chrome 中点击“加载已解压的扩展程序”，选择自动打开的文件夹。</small></div><div class="chrome-step"><span>✓</span><b>自动完成连接</b><small>不需要复制连接码，也不需要填写网站列表，连接成功后回到易下载即可。</small></div></div><details class="advanced-settings"><summary>手动安装扩展（高级）</summary><p class="muted small">仅在自动连接失败时使用。打开文件夹后，在 Chrome 扩展页加载它。</p><div class="inline"><button id="openExtension">打开扩展文件夹</button><button id="copyPairing">复制连接码</button></div></details><p id="pairingMessage" class="feedback" role="status"></p></section>
+          <section class="card settings-section"><h2>常用下载</h2><p class="muted small">首页和浏览器扩展都会使用这里保存的默认参数。</p><label>默认保存目录<div class="input-action"><input id="settingsOutputDir" readonly><button id="settingsChooseDir">浏览</button></div></label><label>默认画质<select id="settingsQuality"><option value="best">最佳画质</option><option value="1080">1080p 高清</option><option value="720">720p</option><option value="audio">音频 · MP3</option></select></label><label>默认格式<select id="settingsFormat"><option value="mp4">视频 · MP4</option><option value="mkv">视频 · MKV</option><option value="mp3">音频 · MP3</option></select></label><label>同时下载数<select id="settingsConcurrency"><option>1</option><option>2</option><option selected>3</option><option>5</option></select></label></section>
+          <section class="card settings-section"><h2>连接设置</h2><p class="muted small">不确定代理地址时，先使用自动检测；普通网站不需要额外设置。</p><div class="proxy-choices"><button id="detectProxy" class="primary">自动检测代理</button><button id="directProxy">直接连接</button></div><p id="proxyStatus" class="feedback" role="status"></p><details class="advanced-settings"><summary>我知道代理地址（高级设置）</summary><label>代理地址<input id="proxy" placeholder="例如 http://127.0.0.1:7892"></label><label class="checkbox"><input id="autoProxy" type="checkbox"> 仅海外网站自动使用代理</label><button id="saveSettings">保存网络设置</button></details><p id="settingsMessage" class="feedback" role="status"></p></section>
+          <section class="card settings-section"><h2>字幕翻译</h2><label>默认翻译服务<select id="settingsSubtitleProvider"><option value="public">免费公共翻译（默认）</option><option value="custom">使用我的 API</option></select></label><label>默认目标语言<select id="settingsSubtitleLanguage"><option value="zh-CN">简体中文</option><option value="zh-TW">繁体中文</option><option value="en">English</option><option value="ja">日本語</option><option value="ko">한국어</option></select></label><details class="advanced-settings"><summary>公共效果不满意？配置自定义 API</summary><label>OpenAI 兼容地址<input id="translationBaseUrl" placeholder="例如 https://api.example.com/v1"></label><label>模型名称<input id="translationModel" placeholder="例如 translate-model"></label><label>API Key<input id="translationApiKey" type="password" placeholder="只保存在本机，不会显示完整内容"></label><div class="inline"><button id="saveTranslationSettings" type="button">保存翻译服务</button><button id="clearTranslationSettings" type="button">恢复免费公共翻译</button></div><p id="translationSettingsMessage" class="feedback" role="status"></p></details><p class="muted small">默认不需要配置；自定义服务只在你主动选择时使用。</p></section>
+          <section class="card settings-section"><h2>专业版</h2><div class="license-row"><span>VIP 激活状态</span><span id="settingsLicenseStatus" class="vip-badge">检查中</span></div><div class="license-row"><span>到期时间</span><span id="settingsLicenseExpiry" class="muted">—</span></div><button id="settingsActivate" class="primary">输入激活码</button><p class="muted small">一次激活解锁全部已上线 VIP 功能。</p></section>
+          <section class="card settings-section wide"><h2>关于与更新</h2><div class="license-row"><span>当前版本</span><span id="settingsVersion" class="muted">1.0.0</span></div><div class="inline"><button id="checkUpdate">检查程序更新</button><button id="openUpdate" class="primary" hidden>运行已校验安装包</button></div><p id="updateMessage" class="feedback" role="status"></p></section>
+        </div>
+        <p id="globalSettingsMessage" class="feedback" role="status"></p>
+      </main>
+
+      <footer><span>● 下载引擎 <span id="engineStatus">连接中…</span></span><span>易下载 <span id="appVersion">1.0.0</span></span></footer>
+    </section>
+  </div>
+
+  <dialog id="activationDialog" aria-labelledby="activationTitle"><form id="activationForm" novalidate><div class="section-title"><span class="dialog-logo">VIP</span><button type="button" data-close="activationDialog" class="close" aria-label="关闭激活窗口">×</button></div><h2 id="activationTitle">激活易下载专业版</h2><p class="muted">单个链接下载免费；输入激活码即可解锁批量任务和增强工作流。</p><p id="licenseDetails" class="small"></p><label for="activationCode">激活码</label><input id="activationCode" class="code" placeholder="XXXXX-XXXXX-XXXXX-XXXXX-XXXXX" autocomplete="off" spellcheck="false" aria-describedby="activationMessage"><p id="activationMessage" class="feedback" role="alert"></p><p class="small muted">激活时需要联网。特殊网站下载需求可联系微信 open_java，先评估技术可行性。</p><div class="actions"><button type="button" data-close="activationDialog">取消</button><button type="submit" id="submitActivation" class="primary">确认激活</button></div></form></dialog>
+  <script src="ui.js"></script>
+</body>
+</html>

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>易下载</title>
+  <style>
+    :root{font-family:"Segoe UI","Microsoft YaHei",sans-serif;color:#14233b;background:#fff}
+    body{width:300px;margin:0;padding:18px;background:#fff}
+    h1{font-size:18px;margin:0 0 5px;letter-spacing:-.2px}
+    .url{font-size:11px;color:#65748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin:0 0 15px}
+    button{display:flex;width:100%;align-items:center;gap:10px;border:1px solid #d9e3ef;border-radius:10px;background:#fff;color:#27456d;padding:11px 12px;margin:8px 0;text-align:left;cursor:pointer}
+    button:hover{background:#f3f8ff;border-color:#a8c8f5}button.primary{background:#1976f3;border-color:#1976f3;color:#fff;font-weight:650}button.primary:hover{background:#1168dc}.icon{width:22px;text-align:center;font-size:17px}.hint{font-size:11px;color:#7a8aa0;line-height:1.6;margin:12px 0 0}.message{font-size:11px;color:#17855e;line-height:1.5;min-height:16px}.message.error{color:#c04b4b}.unsupported{padding:9px 10px;background:#fff6e5;border-radius:8px;color:#9a6e22;font-size:11px;line-height:1.5}
+  </style>
+</head>
+<body>
+  <h1>易下载</h1>
+  <p id="url" class="url">读取当前页面…</p>
+  <div id="unsupported" class="unsupported" hidden>当前页面暂不支持下载，请在易下载中粘贴具体的视频播放页链接。</div>
+  <button id="direct" class="primary"><span class="icon">↓</span><span>下载当前视频</span></button>
+  <button id="send"><span class="icon">➤</span><span>发送到易下载</span></button>
+  <button id="options"><span class="icon">⚙</span><span>浏览器设置</span></button>
+  <p id="message" class="message"></p>
+  <p class="hint">下载当前视频会沿用易下载中保存的画质、格式、目录和代理策略。</p>
+  <script src="popup.js"></script>
+</body>
+</html>

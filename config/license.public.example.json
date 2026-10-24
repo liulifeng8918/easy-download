@@ -1,0 +1,5 @@
+{
+  "appId": "REPLACE_WITH_EASY_DOWNLOAD_APP_ID",
+  "apiBase": "https://life-license-platform-production.kekoukele2.workers.dev",
+  "rootPublicKey": "REPLACE_WITH_EASY_DOWNLOAD_ROOT_PUBLIC_KEY"
+}

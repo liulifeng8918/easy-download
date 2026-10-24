@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>易下载</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <div class="brand">易下载 <span>Easy Download</span></div>
+      <div class="subline">本地优先的视频下载工具</div>
+    </div>
+    <div id="licenseStatus" class="status status-warn">正在检查授权…</div>
+  </header>
+  <main class="layout">
+    <section class="card primary">
+      <h1>下载视频</h1>
+      <label>视频链接<input id="url" type="url" placeholder="粘贴视频链接" /></label>
+      <div class="row">
+        <label>清晰度<select id="quality"><option value="720">720p</option><option value="1080">1080p</option><option value="best">最佳画质</option><option value="audio">仅音频 MP3</option></select></label>
+        <label class="grow">保存目录<div class="inline"><input id="outputDir" readonly /><button id="chooseDir" class="secondary">选择目录</button></div></label>
+      </div>
+      <div class="row">
+        <label class="grow">代理<input id="proxy" value="http://127.0.0.1:7892" /></label>
+        <label class="checkbox"><input id="autoProxy" type="checkbox" checked /> 海外网站自动使用代理</label>
+      </div>
+      <button id="download" class="primary-button">开始下载</button>
+      <p id="message" class="message"></p>
+    </section>
+    <aside class="card side">
+      <h2>本机状态</h2>
+      <div class="stat"><span>下载引擎</span><strong id="engineStatus">检查中…</strong></div>
+      <div class="stat"><span>浏览器连接</span><strong id="cookieStatus">未连接</strong></div>
+      <div class="stat"><span>下载任务</span><strong id="taskStatus">0 个</strong></div>
+      <button id="activate" class="secondary full">输入激活码</button>
+      <button id="settings" class="secondary full">设置与网站管理</button>
+      <button id="checkUpdate" class="secondary full">检查程序更新</button>
+      <button id="openUpdate" class="secondary full" hidden>运行已校验安装包</button>
+      <div class="pairing-box">
+        <h2>浏览器连接</h2>
+        <p>先安装随程序提供的 Chrome 扩展，再复制连接码到扩展设置页。</p>
+        <button id="copyPairing" class="secondary full">复制连接码</button>
+        <p id="pairingMessage" class="hint"></p>
+      </div>
+      <div class="website-box">
+        <h2>已授权网站</h2>
+        <div class="inline"><input id="website" placeholder="例如 youtube.com" /><button id="addWebsite" class="secondary">添加</button></div>
+        <div id="websites" class="website-list"></div>
+      </div>
+    </aside>
+    <section class="card tasks">
+      <div class="section-title"><h2>下载任务</h2><button id="clearTasks" class="text-button">清空已完成</button></div>
+      <div id="tasks" class="empty">还没有下载任务</div>
+    </section>
+  </main>
+  <script src="./renderer.js"></script>
+</body>
+</html>

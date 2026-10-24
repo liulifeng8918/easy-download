@@ -1,0 +1,4 @@
+{
+  "feedUrl": "https://REPLACE_WITH_UPDATE_FEED/update.json",
+  "publicKey": "REPLACE_WITH_OFFLINE_RELEASE_PUBLIC_KEY"
+}

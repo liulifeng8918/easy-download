@@ -1,0 +1,29 @@
+# Dependencies and local build output
+node_modules/
+__pycache__/
+*.pyc
+.pytest_cache/
+build/
+output/
+tmp/
+test-user-data/
+release/
+release-*/
+release-*/**
+
+# Local runtime and user data
+user-data/
+*.log
+startup.log
+test-media-log.txt
+
+# Bundled binary payloads are distributed through GitHub Releases.
+# Keep notices and source metadata in the repository.
+bin/*.exe
+runtime/*.exe
+
+# Local IDE and OS files
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini

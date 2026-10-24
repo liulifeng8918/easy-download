@@ -1,0 +1,62 @@
+{
+  "name": "easy-download",
+  "version": "1.0.0",
+  "private": true,
+  "description": "易下载：本地优先的视频下载工具",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "test": "node --test test/*.test.cjs",
+    "start": "electron .",
+    "build:sidecar": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-sidecar.ps1",
+    "dist:dir": "electron-builder --dir",
+    "dist": "electron-builder",
+    "dist:unsigned-installer": "node scripts/build-unsigned-installer.cjs",
+    "dist:portable": "node scripts/build-portable-package.cjs"
+  },
+  "devDependencies": {
+    "electron": "^37.2.6",
+    "electron-builder": "^26.0.12",
+    "playwright-core": "^1.63.0"
+  },
+  "build": {
+    "appId": "com.lifeconnection.easydownload",
+    "productName": "易下载",
+    "asar": false,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron/main.cjs",
+      "electron/preload.cjs",
+      "electron/download/**/*",
+      "electron/renderer/app.html",
+      "electron/renderer/ui.css",
+      "electron/renderer/ui-pro.css",
+      "electron/renderer/ui.js",
+      "electron/renderer/assets/**/*",
+      "python/**/*",
+      "runtime/**/*",
+      "config/**/*",
+      "extension/**/*",
+      "bin/**/*",
+      "docs/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "artifactName": "EasyDownload-${version}-${arch}.${ext}"
+    },
+    "portable": {
+      "artifactName": "EasyDownload-${version}-${arch}-portable.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
+}

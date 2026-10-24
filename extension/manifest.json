@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "易下载浏览器下载",
+  "version": "1.0.0",
+  "description": "在浏览器中下载当前视频，并自动连接易下载同步已登记网站的登录状态。",
+  "permissions": ["cookies", "contextMenus", "notifications", "storage", "tabs"],
+  "host_permissions": [
+    "http://127.0.0.1/*",
+    "*://douyin.com/*", "*://*.douyin.com/*",
+    "*://youtube.com/*", "*://*.youtube.com/*", "*://youtu.be/*", "*://*.youtu.be/*",
+    "*://bilibili.com/*", "*://*.bilibili.com/*",
+    "*://xiaohongshu.com/*", "*://*.xiaohongshu.com/*",
+    "*://weibo.com/*", "*://*.weibo.com/*",
+    "*://ixigua.com/*", "*://*.ixigua.com/*",
+    "*://tiktok.com/*", "*://*.tiktok.com/*",
+    "*://instagram.com/*", "*://*.instagram.com/*",
+    "*://facebook.com/*", "*://*.facebook.com/*",
+    "*://x.com/*", "*://*.x.com/*", "*://twitter.com/*", "*://*.twitter.com/*"
+  ],
+  "optional_host_permissions": ["*://*/*"],
+  "content_scripts": [{
+    "matches": ["http://127.0.0.1:17894/browser-setup*"],
+    "js": ["setup.js"],
+    "run_at": "document_idle"
+  }],
+  "background": { "service_worker": "background.js" },
+  "options_page": "options.html",
+  "action": { "default_title": "易下载", "default_popup": "popup.html" },
+  "icons": { "48": "icon48.png", "128": "icon128.png" }
+}

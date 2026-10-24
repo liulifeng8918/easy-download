@@ -1,0 +1,7 @@
+易下载随附 Node.js 运行时
+
+本目录中的 node.exe 来自 Node.js 项目，按 MIT License 发布。
+Node.js 项目版权归 Node.js contributors 所有。
+许可文本与项目源代码：https://github.com/nodejs/node
+
+该运行时只用于网页视频解析所需的兼容性脚本，不会主动联网更新，也不会收集用户数据。

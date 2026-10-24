@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>易下载浏览器设置</title>
+<style>
+  body { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; max-width: 680px; margin: 24px auto; padding: 0 16px; color: #14233b; background: #f6f9fc; }
+  main { background:#fff; border:1px solid #d9e3ef; border-radius:16px; padding:24px; box-shadow:0 12px 34px rgba(25,67,110,.06); }
+  h1 { font-size: 20px; }
+  textarea { width: 100%; box-sizing: border-box; height: 220px; font-family: Consolas, monospace; font-size: 13px; }
+  button { padding: 8px 20px; font-size: 14px; cursor: pointer; }
+  .status { margin: 12px 0; padding: 10px; background: #eaf3ff; color:#276bb6; border-radius: 8px; font-size: 13px; }
+  .hint { color: #65748b; font-size: 12px; line-height: 1.7; }
+  button { border:1px solid #c8d9ec; border-radius:8px; background:#fff; color:#214a77; }
+  button:hover { background:#f0f7ff; border-color:#9fc2ee; }
+  input, textarea { border:1px solid #cfddeb; border-radius:8px; background:#fbfdff; color:#14233b; }
+</style>
+</head>
+<body>
+<main>
+<h1>易下载浏览器连接</h1>
+<div class="status" id="status">读取状态中...</div>
+<p id="connectionSummary" class="hint">请回到易下载设置，点击“连接 Chrome”。扩展加载后会自动完成连接，不需要复制连接码。</p>
+<p class="hint">连接成功后，扩展会自动发现已登记平台的登录状态。易下载只同步这些平台，不会显示 Cookie 内容。</p>
+<details>
+  <summary>手动设置（高级）</summary>
+  <p>仅在自动连接失败时使用。普通用户不需要填写下面内容。</p>
+  <input id="bridgeToken" type="password" placeholder="粘贴连接码" style="width:100%;box-sizing:border-box;padding:8px;font-family:Consolas,monospace" />
+  <p class="hint">每行填写一个需要同步登录状态的网站域名。</p>
+  <textarea id="domains"></textarea>
+  <p><button id="save">保存并同步登录状态</button> <span id="msg"></span></p>
+</details>
+<script src="options.js"></script>
+</main>
+</body>
+</html>
