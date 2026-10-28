@@ -30,7 +30,7 @@ async function render() {
 const KNOWN_PLATFORM_DOMAINS = [
   "douyin.com", "youtube.com", "bilibili.com", "xiaohongshu.com",
   "weibo.com", "ixigua.com", "tiktok.com", "instagram.com",
-  "facebook.com", "x.com", "twitter.com"
+  "facebook.com", "x.com", "twitter.com", "yifan.tv", "iyf.tv"
 ];
 
 function platformOrigins(domains) {

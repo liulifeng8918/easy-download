@@ -6,6 +6,7 @@ const { appendFileSync, existsSync } = require('node:fs');
 const path = require('node:path');
 const { DownloadController } = require('./download/controller.cjs');
 const { DouyinResolver } = require('./download/douyin-resolver.cjs');
+const { resolveYifan } = require('./download/yifan-resolver.cjs');
 const { verifyMedia } = require('./download/media-verifier.cjs');
 
 function diagnostic(message, error) {
@@ -328,6 +329,7 @@ app.whenReady().then(async () => {
   downloadController = new DownloadController({
     request: sidecarRequest,
     resolveDouyin: (url, settings) => douyinResolver.resolve(url, settings),
+    resolveYifan,
     verifyMedia: (task, expected) => verifyMedia(task, expected, path.join(root, 'bin', 'ffmpeg.exe')),
     progress: (event) => mainWindow?.webContents.send('download-progress', event),
   });

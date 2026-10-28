@@ -22,6 +22,25 @@ test('normal sites use the existing protected engine and normalized input', asyn
   assert.equal(calls.find(([route]) => route === '/v1/links/check')[1].url, result.url);
   assert.equal(calls.find(([route, body]) => route === '/v1/downloads' && body)[1].url, result.url);
 });
+
+test('yifan pages use the dedicated playlist resolver and keep the source url visible', async () => {
+  const { controller, calls } = setup({
+    resolveYifan: async () => ({
+      mediaUrl: 'https://cdn.example.test/stream.m3u8?sig=short',
+      sourceUrl: 'https://www.yifan.tv/watch?v=HIVJn4VQvwrHXVmL0LMq51',
+      videoId: 'HIVJn4VQvwrHXVmL0LMq51',
+      title: '爱壹帆视频',
+      referer: 'https://www.yifan.tv/watch?v=HIVJn4VQvwrHXVmL0LMq51',
+      userAgent: 'Mozilla/5.0 EasyDownloadTest',
+    }),
+  });
+  const result = await controller.start({ input: 'https://www.yifan.tv/watch?v=HIVJn4VQvwrHXVmL0LMq51' });
+  const body = calls.find(([route, value]) => route === '/v1/downloads' && value)[1];
+  assert.equal(result.task.url, 'https://www.yifan.tv/watch?v=HIVJn4VQvwrHXVmL0LMq51');
+  assert.equal(body.sourceUrl, result.task.url);
+  assert.match(body.url, /^https:\/\/cdn\.example\.test\/stream\.m3u8/);
+  assert.equal(body.referer, result.task.url);
+});
 test('browser media stays internal and task display retains original page', async () => {
   const { controller, calls } = setup();
   const result = await controller.start({ input: '看 https://v.douyin.com/abc/', quality: 'best' });

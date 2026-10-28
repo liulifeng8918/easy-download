@@ -15,7 +15,8 @@
     "*://tiktok.com/*", "*://*.tiktok.com/*",
     "*://instagram.com/*", "*://*.instagram.com/*",
     "*://facebook.com/*", "*://*.facebook.com/*",
-    "*://x.com/*", "*://*.x.com/*", "*://twitter.com/*", "*://*.twitter.com/*"
+    "*://x.com/*", "*://*.x.com/*", "*://twitter.com/*", "*://*.twitter.com/*",
+    "*://yifan.tv/*", "*://*.yifan.tv/*", "*://iyf.tv/*", "*://*.iyf.tv/*"
   ],
   "optional_host_permissions": ["*://*/*"],
   "content_scripts": [{

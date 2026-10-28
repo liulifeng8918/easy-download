@@ -28,6 +28,7 @@ test('site registry uses exact domains rather than substring matching', () => {
   assert.equal(sitePolicy('https://v.douyin.com/abc/').adapter, 'douyin-browser');
   assert.equal(sitePolicy('https://www.douyin.com/video/123').name, '抖音');
   assert.equal(sitePolicy('https://www.youtube.com/watch?v=x').name, 'YouTube');
+  assert.equal(sitePolicy('https://www.yifan.tv/watch?v=HIVJn4VQvwrHXVmL0LMq51').adapter, 'yifan-hls');
   assert.equal(sitePolicy('https://b23.tv/abc').name, 'B站');
   assert.equal(sitePolicy('https://douyin.com.evil.example/video/123').adapter, 'engine');
   assert.equal(sitePolicy('https://www.kuaishou.com/short-video/x').verification, 'pending');

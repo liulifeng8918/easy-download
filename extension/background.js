@@ -6,7 +6,7 @@ const DOWNLOAD_ENDPOINT = "http://127.0.0.1:17894/v1/browser/submit";
 const KNOWN_PLATFORM_DOMAINS = [
   "douyin.com", "youtube.com", "youtu.be", "bilibili.com", "xiaohongshu.com",
   "weibo.com", "ixigua.com", "tiktok.com", "instagram.com", "facebook.com",
-  "x.com", "twitter.com"
+  "x.com", "twitter.com", "yifan.tv", "iyf.tv"
 ];
 
 async function getDomains() {

@@ -43,6 +43,7 @@ const SITE_POLICIES = [
   ['AcFun', ['acfun.cn'], 'engine', 'P1', 'domestic'],
   ['TikTok', ['tiktok.com'], 'engine', 'P1', 'overseas'],
   ['Vimeo', ['vimeo.com'], 'engine', 'P1', 'overseas'],
+  ['爱壹帆', ['yifan.tv', 'iyf.tv'], 'yifan-hls', 'P1', 'overseas'],
   ['Instagram', ['instagram.com'], 'engine', 'P1', 'overseas'],
   ['Facebook', ['facebook.com', 'fb.watch'], 'engine', 'P1', 'overseas'],
   ['X', ['x.com', 'twitter.com', 't.co'], 'engine', 'P1', 'overseas'],

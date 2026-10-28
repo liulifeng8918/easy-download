@@ -1,8 +1,8 @@
 const { DownloadError, parseLinkInput, sitePolicy, validatePublicUrl, domainMatches } = require('./link-input.cjs');
 function safeProgress(text) { return String(text || '').replace(/https?:\/\/[^\s]+/gi, '[媒体地址]').slice(-350); }
 class DownloadController {
-  constructor({ request, resolveDouyin, verifyMedia, progress }) {
-    Object.assign(this, { request, resolveDouyin, verifyMedia, progress });
+  constructor({ request, resolveDouyin, resolveYifan, verifyMedia, progress }) {
+    Object.assign(this, { request, resolveDouyin, resolveYifan, verifyMedia, progress });
     this.pending = new Map(); this.sources = new Map(); this.keys = new Map(); this.verifications = new Map();
   }
   async licenseGuard() {
@@ -44,6 +44,11 @@ class DownloadController {
       const host = new URL(mediaUrl).hostname;
       if (!domainMatches(host, 'douyinvod.com') && !(domainMatches(host, 'douyin.com') && new URL(mediaUrl).pathname === '/aweme/v1/play/')) throw new DownloadError('MEDIA_TARGET_INVALID', '解析得到的媒体来源不符合该网站策略。');
       if (['720', '1080'].includes(quality) && resolved.height > Number(quality)) throw new DownloadError('FORMAT_UNAVAILABLE', `当前取得的源画质为 ${resolved.height}p，未取得你选择范围内的画质，请改选最佳画质。`);
+    } else if (policy.adapter === 'yifan-hls') {
+      if (typeof this.resolveYifan !== 'function') throw new DownloadError('SITE_NOT_READY', '爱壹帆适配器尚未加载，请重新启动易下载。');
+      resolved = await this.resolveYifan(parsed.url, settings);
+      mediaUrl = validatePublicUrl(resolved.mediaUrl);
+      this.progress?.({ url: parsed.url, stage: 'resolved', message: '已取得爱壹帆播放流，正在下载…' });
     } else {
       const { check } = await this.request('/v1/links/check', { method: 'POST', body: JSON.stringify({ url: parsed.url, quality, format, premium }) });
       if (!check?.ready) {
