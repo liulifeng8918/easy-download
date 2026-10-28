@@ -34,6 +34,7 @@ const bundledSidecar = path.join(root, 'runtime', 'easy_download_sidecar.exe');
 let sidecar;
 let sidecarPort;
 let sidecarToken;
+let sidecarExit;
 let mainWindow;
 let downloadController;
 let douyinResolver;
@@ -72,9 +73,14 @@ function startSidecar() {
     windowsHide: true,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+  sidecarExit = null;
+  sidecar.on('error', (error) => diagnostic('[sidecar] spawn failed', error));
   sidecar.stdout.on('data', (chunk) => console.log(`[sidecar] ${chunk.toString().trimEnd()}`));
   sidecar.stderr.on('data', (chunk) => diagnostic('[sidecar] ' + chunk.toString().trimEnd()));
-  sidecar.on('exit', (code, signal) => diagnostic(`[sidecar] exited code=${code} signal=${signal || ''}`));
+  sidecar.on('exit', (code, signal) => {
+    sidecarExit = { code, signal: signal || '' };
+    diagnostic(`[sidecar] exited code=${code} signal=${signal || ''}`);
+  });
 }
 
 async function sidecarRequest(route, init = {}) {
@@ -97,17 +103,24 @@ async function sidecarRequest(route, init = {}) {
 }
 
 async function waitForSidecar() {
-  const deadline = Date.now() + 10000;
+  // PyInstaller may need extra time on the first launch while Windows scans
+  // and initializes the bundled executable. Do not kill a healthy sidecar
+  // merely because it did not answer within the old 10-second window.
+  const deadline = Date.now() + 30000;
   let lastError;
   while (Date.now() < deadline) {
+    if (sidecarExit) {
+      const detail = sidecarExit.signal ? `信号 ${sidecarExit.signal}` : `退出码 ${sidecarExit.code}`;
+      throw new Error(`下载引擎进程提前退出（${detail}）。请关闭旧版易下载后重试。`);
+    }
     try {
       return await sidecarRequest('/health');
     } catch (error) {
       lastError = error;
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 250));
     }
   }
-  throw lastError || new Error('Python sidecar did not start');
+  throw new Error('下载引擎在 30 秒内没有响应。请关闭旧版易下载后重试；如果仍失败，请检查 Windows 是否拦截了易下载的下载引擎。', { cause: lastError });
 }
 
 function bridgeJson(response, status, payload) {
@@ -386,7 +399,8 @@ app.whenReady().then(async () => {
   });
 }).catch((error) => {
   diagnostic('startup failed', error);
-  dialog.showErrorBox('易下载启动失败', '下载引擎未能启动，请关闭旧版易下载后重试。\n' + error.message);
+  const detail = error?.cause?.message && error.message.includes('30 秒') ? `${error.message}\n底层原因：${error.cause.message}` : error.message;
+  dialog.showErrorBox('易下载启动失败', detail || '下载引擎未能启动，请关闭旧版易下载后重试。');
   app.quit();
 });
 
