@@ -24,6 +24,7 @@ QUALITY_FORMATS = {
 MEDIA_EXTENSIONS = frozenset({".mp4", ".mkv", ".webm", ".mov", ".avi", ".m4v", ".mp3", ".m4a", ".aac", ".flac", ".wav", ".opus"})
 TASK_URL_PATTERN = re.compile(r"^https?://[^\s]+$", re.IGNORECASE)
 OVERSEAS_DOMAINS = ("youtube.com", "youtu.be", "tiktok.com", "vimeo.com", "instagram.com", "facebook.com", "twitter.com", "x.com")
+YIFAN_MEDIA_HOSTS = ("dataphasore.vip", "netvortexc.vip", "netvortexb.vip", "netvortexe.vip", "netvortexd.vip")
 PLATFORM_NAMES = (
     ("xiaohongshu.com", "小红书"), ("xhslink.com", "小红书"),
     ("weibo.com", "微博"), ("weibo.cn", "微博"),
@@ -57,6 +58,8 @@ def classify_download_error(message: str, *, hostname: str = "", proxy_configure
         return {"code": "ACCESS_RESTRICTED", "message": f"{name}拒绝了当前下载请求（常见于页面验证、短时效媒体地址或请求上下文不完整）。请重试；如果浏览器也无法播放，再登录或完成网站验证。"}
     if "requested format is not available" in text or "format is not available" in text:
         return {"code": "FORMAT_UNAVAILABLE", "message": "这个页面没有当前选择的画质。请改选“最佳画质”或较低画质后重试。"}
+    if "fragment" in text and any(term in text for term in ("unable", "failed", "unavailable", "http error")):
+        return {"code": "MEDIA_FRAGMENT_FAILED", "message": f"{name}的视频分片访问不稳定，下载已停止。请稍后重试；如果反复失败，请降低画质或检查代理。"}
     if any(term in text for term in ("video is unavailable", "not found", "private video", "this video is unavailable")):
         return {"code": "VIDEO_UNAVAILABLE", "message": f"{name}视频不存在、已下架或当前账号无权查看。请确认链接仍可在浏览器中正常播放。"}
     if hostname and not proxy_configured and any(hostname == domain or hostname.endswith("." + domain) for domain in OVERSEAS_DOMAINS):
@@ -267,6 +270,16 @@ class DownloadManager:
         if use_proxy:
             environment["http_proxy"] = proxy
             environment["https_proxy"] = proxy
+        if any(hostname == domain or hostname.endswith("." + domain) for domain in YIFAN_MEDIA_HOSTS):
+            # 爱壹帆的公开流由大量 10 秒 HLS 分片组成。串行下载时，
+            # 某个 CDN 分片的重试会让 30 分钟视频长时间看起来没有进度。
+            # 限制单片重试并并行取片，失败时尽快反馈，不无限等待。
+            command.extend([
+                "--concurrent-fragments", "4",
+                "--fragment-retries", "3",
+                "--retry-sleep", "fragment:exp=1:10",
+                "--abort-on-unavailable-fragments",
+            ])
         if preflight:
             command.extend(["--skip-download", "--dump-single-json", url])
         else:

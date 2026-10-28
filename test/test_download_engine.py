@@ -63,6 +63,20 @@ class DownloadHistoryTests(unittest.TestCase):
             self.assertEqual(command[command.index("--referer") + 1], "https://www.douyin.com/video/123")
             self.assertEqual(command[command.index("--user-agent") + 1], "Mozilla/5.0 EasyDownloadTest")
 
+    def test_yifan_hls_uses_bounded_parallel_fragment_download(self):
+        with tempfile.TemporaryDirectory() as directory:
+            manager = self.make_manager(directory)
+            command, _, _ = manager._build_command(
+                url="https://s100-e1.dataphasore.vip/video/chunklist.m3u8?sig=short",
+                quality="best",
+                output_dir=directory,
+                proxy="",
+                auto_proxy=True,
+            )
+            self.assertEqual(command[command.index("--concurrent-fragments") + 1], "4")
+            self.assertEqual(command[command.index("--fragment-retries") + 1], "3")
+            self.assertIn("--abort-on-unavailable-fragments", command)
+
     def test_clear_history_removes_completed_and_failed_but_keeps_active(self):
         manager = DownloadManager.__new__(DownloadManager)
         manager._lock = __import__("threading").Lock()
