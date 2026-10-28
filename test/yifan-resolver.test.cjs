@@ -16,6 +16,7 @@ test('parses a master playlist without persisting signed media urls', () => {
   const playlist = '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nhttps://cdn.example.test/stream/chunklist.m3u8?sig=short';
   assert.equal(parseMasterPlaylist(playlist, 'https://upload.yifan.tv/api/video/MasterPlayList?id=x'), 'https://cdn.example.test/stream/chunklist.m3u8?sig=short');
   assert.throws(() => parseMasterPlaylist('#EXTM3U\n#EXT-X-ENDLIST', 'https://upload.yifan.tv/api/video/MasterPlayList?id=x'), /播放流/);
+  assert.throws(() => parseMasterPlaylist('#EXTM3U\n#EXT-X-KEY:METHOD=SAMPLE-AES,KEYFORMAT="com.apple.streamingkeydelivery"\nhttps://cdn.example.test/stream.m3u8', 'https://upload.yifan.tv/api/video/MasterPlayList?id=x'), /加密保护/);
 });
 
 test('resolves yifan through the public playlist endpoint', async () => {

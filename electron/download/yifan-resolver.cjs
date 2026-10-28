@@ -29,6 +29,8 @@ function parseMasterPlaylist(body, baseUrl) {
   if (typeof body !== 'string' || !body.trimStart().startsWith('#EXTM3U')) {
     throw new DownloadError('YIFAN_PLAYLIST_INVALID', '网站没有返回可下载的视频播放列表。');
   }
+  const protectedKey = body.split(/\r?\n/).find(line => /#EXT-X-KEY:/i.test(line) && (/METHOD=SAMPLE-AES/i.test(line) || /KEYFORMAT\s*=\s*"?(?!identity\b)/i.test(line)));
+  if (protectedKey) throw new DownloadError('DRM_PROTECTED', '这个爱壹帆视频使用加密保护，易下载不提供下载。');
   const candidates = [];
   for (const rawLine of body.split(/\r?\n/)) {
     const line = rawLine.trim();
