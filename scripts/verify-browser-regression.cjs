@@ -47,15 +47,13 @@ async function wait(predicate, ms=60000) {const end=Date.now()+ms; while(Date.no
   results.push('old extension cannot create a false successful pairing or consume the setup ticket');
   const setup=await browser.newPage();
   const setupUrl=`http://127.0.0.1:24894/browser-setup?ticket=${ticket.ticket}`;
-  try { await setup.goto(setupUrl,{waitUntil:'domcontentloaded'}); }
-  catch(error){
-    if(!String(error.message).includes('ERR_ABORTED'))throw error;
-    // onInstalled reloads an existing wizard. If that races the first
-    // navigation in this fresh test profile, the tab can still be about:blank.
-    await setup.goto(setupUrl,{waitUntil:'domcontentloaded'});
+  async function navigateSetup(){
+    try { await setup.goto(setupUrl,{waitUntil:'domcontentloaded'}); }
+    catch(error){if(!/ERR_ABORTED|interrupted by another navigation/.test(String(error.message)))throw error;}
   }
+  await navigateSetup();
   await wait(async()=> {
-    if(setup.url()==='about:blank')await setup.goto(setupUrl,{waitUntil:'domcontentloaded'}).catch(()=>{});
+    if(setup.url()==='about:blank')await navigateSetup();
     return (await page.evaluate(t=>window.easyDownload.browserSetupStatus(t),ticket.ticket)).paired;
   }).catch(async error=>{
     const diagnostic=await worker.evaluate(async()=>{const s=await chrome.storage.local.get(['bridgeToken','lastStatus']);return {credentialSaved:!!s.bridgeToken,lastStatus:s.lastStatus};});
@@ -104,7 +102,9 @@ async function wait(predicate, ms=60000) {const end=Date.now()+ms; while(Date.no
   if(process.env.EASY_DOWNLOAD_LIVE_DOUYIN){
     await page.evaluate(proxy=>window.easyDownload.request('/v1/settings',{method:'POST',body:JSON.stringify({proxy,autoProxy:true})}),process.env.EASY_DOWNLOAD_TEST_PROXY||'');
     const real=await browser.newPage();
-    await real.goto('https://www.douyin.com/video/7701612994102316328',{waitUntil:'domcontentloaded',timeout:60000});
+    const liveUrl=process.env.EASY_DOWNLOAD_LIVE_DOUYIN_URL||'https://www.douyin.com/video/7701612994102316328';
+    await real.goto(liveUrl,{waitUntil:'domcontentloaded',timeout:60000});
+    const expectedVideoUrl=real.url();
     await popup.close();
     const livePopup=await browser.newPage();
     await real.bringToFront();
@@ -113,7 +113,7 @@ async function wait(predicate, ms=60000) {const end=Date.now()+ms; while(Date.no
     console.log('SUBMIT real Douyin via extension');
     await wait(async()=>{
       const value=await page.evaluate(()=>window.easyDownload.downloadTasks());
-      const task=value.tasks.find(t=>t.url==='https://www.douyin.com/video/7701612994102316328');
+      const task=value.tasks.find(t=>t.url===expectedVideoUrl);
       if(task?.status==='failed')throw new Error(task.error);
       return task?.status==='completed';
     },240000);

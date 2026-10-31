@@ -1,4 +1,6 @@
 const { DownloadError, domainMatches, validatePublicUrl } = require('./link-input.cjs');
+const { observeDouyinMetadata, logDouyinDiagnostic } = require('./douyin-metadata.cjs');
+const { randomUUID } = require('node:crypto');
 
 function isDouyinNavigation(raw) {
   try {
@@ -9,12 +11,20 @@ function isDouyinNavigation(raw) {
 function pageVideoId(raw) {
   try { const url = new URL(raw); return url.pathname.match(/^\/(?:video|share\/video)\/(\d+)/)?.[1] || url.searchParams.get('modal_id'); } catch { return null; }
 }
-function selectDouyinMedia(state, expectedId) {
+function selectDouyinMedia(state, expectedId, quality = 'best') {
   if (!state || !isDouyinNavigation(state.pageUrl)) return null;
   const pageId = pageVideoId(state.pageUrl);
   if (!pageId || (expectedId && pageId !== expectedId)) return null;
   for (const video of state.videos || []) {
     if (!video.active || !(video.duration > 0) || !Number.isFinite(video.duration)) continue;
+    if (state.metadata?.videoId === pageId) {
+      const limit = /^\d+$/.test(quality) ? Number(quality) : Infinity;
+      const candidates = state.metadata.formats.filter(f => f.height > 0 && f.height <= limit).sort((a,b) => b.height-a.height || b.bitrate-a.bitrate);
+      if (candidates.length) {
+        const selected = candidates[0];
+        return {mediaUrl:selected.mediaUrl,sourceUrl:state.pageUrl,videoId:pageId,title:state.metadata.title,duration:video.duration,width:selected.width,height:selected.height,requireAudio:state.metadata.requireAudio};
+      }
+    }
     let url;
     try { url = new URL(validatePublicUrl(video.src)); } catch {
       // MediaSource blobs are not downloadable URLs. Accept only an observed
@@ -53,14 +63,22 @@ function collectObservation() {
 class DouyinResolver {
   constructor({ BrowserWindow, session, parent, progress, diagnostic, loadCookies, timeoutMs = 90000 }) {
     Object.assign(this, { BrowserWindow, session, parent, progress, diagnostic, loadCookies, timeoutMs });
+    this.diagnostic ||= logDouyinDiagnostic;
     this.windows = new Set();
     this.tail = Promise.resolve();
     this.disposed = false;
   }
   resolve(url, settings = {}) {
+    const resolvePage = async activeSettings => {
+      try { return await this._resolve(url, {...activeSettings, useAuthorizedCookies:false}); }
+      catch(error) {
+        if(error?.code==='LOGIN_REQUIRED' && this.loadCookies) return this._resolve(url,{...activeSettings,useAuthorizedCookies:true});
+        throw error;
+      }
+    };
     const next = this.tail.then(async () => {
       try {
-        const result = await this._resolve(url, settings);
+        const result = await resolvePage(settings);
         return { ...result, viaProxy: Boolean(settings.proxy && !settings.autoProxy) };
       } catch (error) {
         // Automatic proxy mode first tries the normal path. If the embedded
@@ -68,7 +86,7 @@ class DouyinResolver {
         // that proxy. An explicit direct-connection choice never retries.
         if (error?.code === 'NETWORK_FAILED' && settings.autoProxy && settings.proxy) {
           this.progress?.({ stage: 'proxy-retry', message: '页面直连失败，正在使用已检测到的代理重试…' });
-          const result = await this._resolve(url, { ...settings, autoProxy: false });
+          const result = await resolvePage({ ...settings, autoProxy: false });
           return { ...result, viaProxy: true };
         }
         throw error;
@@ -80,10 +98,15 @@ class DouyinResolver {
   async _resolve(url, settings) {
     if (this.disposed) throw new DownloadError('CANCELLED', '本次解析已取消。');
     if (!isDouyinNavigation(url)) throw new DownloadError('INVALID_URL', '这不是抖音视频链接。');
-    const browserSession = this.session.fromPartition('persist:easy-download-douyin-v1');
+    // Public videos should establish their own normal visitor context. Chrome
+    // cookies can be bound to a different browser environment and, for the
+    // reported sample, importing them prevented the player from being created.
+    // Never delete the user's stored Chrome session to solve that difference.
+    const browserSession = this.session.fromPartition('easy-download-douyin-'+randomUUID());
+    this.diagnostic?.({kind:'page-context',authorized:Boolean(settings.useAuthorizedCookies)});
     // Only import the Douyin cookies the user already explicitly synchronized
     // via this app's Chrome extension; no direct Chrome database access.
-    if (this.loadCookies) {
+    if (settings.useAuthorizedCookies && this.loadCookies) {
       const cookies = await this.loadCookies();
       for (const cookie of cookies || []) {
         const domain = String(cookie.domain || '').replace(/^\./, '');
@@ -107,6 +130,10 @@ class DouyinResolver {
       webPreferences: { session: browserSession, sandbox: true, nodeIntegration: false, contextIsolation: true, backgroundThrottling: false },
     });
     this.windows.add(window);
+    const metadataById = new Map();
+    const stopMetadataObserver = await observeDouyinMetadata(window.webContents, metadata => {
+      if (metadataById.size < 10 || metadataById.has(metadata.videoId)) metadataById.set(metadata.videoId, metadata);
+    }, this.diagnostic);
     window.setMenu(null);
     window.webContents.setAudioMuted(true);
     window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -115,7 +142,7 @@ class DouyinResolver {
       this.diagnostic?.({ kind: eventName, allowed, host: (() => { try { return new URL(target).hostname; } catch { return ''; } })() });
       if (!allowed) event.preventDefault();
     });
-    let cancelled = false, verificationShown = false, slowNotice = false, loadError;
+    let cancelled = false, verificationShown = false, slowNotice = false, loadError, lastDiagnostic = 0;
     const startedAt = Date.now();
     let deadline = Date.now() + this.timeoutMs;
     window.on('closed', () => { cancelled = true; this.windows.delete(window); });
@@ -139,9 +166,14 @@ class DouyinResolver {
         if (state) {
           state.networkMedia = observedMedia;
           expectedId ||= pageVideoId(state.pageUrl);
+          state.metadata = metadataById.get(pageVideoId(state.pageUrl));
+          if(Date.now()-lastDiagnostic>5000){
+            lastDiagnostic=Date.now();
+            this.diagnostic?.({kind:'player-state',videoId:pageVideoId(state.pageUrl),metadata:Boolean(state.metadata),videos:(state.videos||[]).map(v=>({active:v.active,duration:v.duration,sourceType:String(v.src||'').split(':')[0]})),challenge:state.challenge,loginRequired:state.loginRequired});
+          }
           if (state.encrypted) throw new DownloadError('DRM_PROTECTED', '这个视频使用加密保护，易下载不提供下载。');
           if (state.unavailable) throw new DownloadError('VIDEO_UNAVAILABLE', '这个视频已删除、不可见或当前无法播放。');
-          const media = selectDouyinMedia(state, expectedId);
+          const media = selectDouyinMedia(state, expectedId, settings.quality || 'best');
           if (media) {
             // Douyin checks the request context for short-lived media URLs.
             // Preserve the page URL and browser UA for the download worker.
@@ -150,6 +182,9 @@ class DouyinResolver {
               referer: state.pageUrl,
               userAgent: window.webContents.getUserAgent(),
             };
+          }
+          if(state.loginRequired && !settings.useAuthorizedCookies && this.loadCookies) {
+            throw new DownloadError('LOGIN_REQUIRED','网站要求登录，正在尝试已授权的浏览器登录状态。');
           }
           if ((state.challenge || state.loginRequired) && !verificationShown) {
             verificationShown = true;
@@ -165,8 +200,10 @@ class DouyinResolver {
       if (cancelled || this.disposed) throw new DownloadError('CANCELLED', '你已取消本次网站验证或解析。');
       throw new DownloadError('RESOLVE_TIMEOUT', verificationShown ? '网站验证未完成，本次任务已停止。' : '未取得这个视频的可用媒体。网站可能限制访问或当前页面尚未适配；这不代表你没有登录。');
     } finally {
+      stopMetadataObserver();
       this.windows.delete(window);
       if (!window.isDestroyed()) window.destroy();
+      browserSession.clearStorageData?.().catch(()=>{});
     }
   }
   dispose() { this.disposed = true; for (const window of this.windows) if (!window.isDestroyed()) window.destroy(); this.windows.clear(); }

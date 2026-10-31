@@ -33,7 +33,7 @@ test('a playable Douyin video does not wait for unrelated page resources to fini
     setMenu(){} on(){} loadURL(){return Promise.resolve();} isDestroyed(){return false;} destroy(){}
   }
   const s={setPermissionRequestHandler(){},setPermissionCheckHandler(){},webRequest:{onBeforeRequest(){}},setProxy:async()=>{}};
-  const resolver=new DouyinResolver({BrowserWindow:Window,session:{fromPartition:()=>s},timeoutMs:1000});
+  const resolver=new DouyinResolver({BrowserWindow:Window,session:{fromPartition:()=>s},loadCookies:()=>{throw new Error('Public playback must not depend on imported Chrome cookies');},timeoutMs:1000});
   assert.equal((await resolver.resolve(state.pageUrl)).videoId,'123');
 });
 test('generic actual download retains the proxy policy used in preflight', async () => {

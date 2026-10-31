@@ -41,7 +41,7 @@ class DownloadController {
     this.progress?.({ url: parsed.url, stage: 'resolving', message: `${parsed.extracted ? '已识别分享链接。' : ''}正在解析${policy.name}视频…` });
     let resolved, mediaUrl = parsed.url;
     if (policy.adapter === 'douyin-browser') {
-      resolved = await this.resolveDouyin(parsed.url, settings);
+      resolved = await this.resolveDouyin(parsed.url, {...settings, quality});
       mediaUrl = validatePublicUrl(resolved.mediaUrl);
       const host = new URL(mediaUrl).hostname;
       if (!domainMatches(host, 'douyinvod.com') && !(domainMatches(host, 'douyin.com') && new URL(mediaUrl).pathname === '/aweme/v1/play/')) throw new DownloadError('MEDIA_TARGET_INVALID', '解析得到的媒体来源不符合该网站策略。');
@@ -93,7 +93,7 @@ class DownloadController {
         const verification = this.verifications.get(original.id).result;
         if (!verification) { task.status = 'verifying'; task.progress = '文件已下载，正在检查完整视频与音频…'; }
         else if (!verification.ok) { task.status = 'failed'; task.error = verification.message; }
-        else task.media = { duration: verification.duration };
+        else task.media = { duration: verification.duration, hasAudio: verification.hasAudio, hasVideo: verification.hasVideo };
       }
       if (['completed', 'failed'].includes(task.status) && source) this.keys.delete(source.key);
       return task;

@@ -23,6 +23,7 @@ async function verifyMedia(task, expected = {}, ffmpeg) {
     child.once('close', code => {
       const info = probeText(text);
       if (code !== 0 || (task.quality === 'audio' ? !info.hasAudio : !info.hasVideo) || !(info.duration > 0)) return done({ ok: false, message: '输出不是可读取的完整媒体文件，未标记为下载成功。' });
+      if (task.quality !== 'audio' && expected.requireAudio && !info.hasAudio) return done({ok:false,message:'这个视频缺少应有的声音，未标记为完整下载。'});
       if (expected.duration && Math.abs(info.duration - expected.duration) > Math.max(2, expected.duration * 0.05)) return done({ ok: false, message: '下载文件时长与目标视频不符，请重试；本次未标记为完整下载。' });
       done({ ok: true, ...info });
     });
