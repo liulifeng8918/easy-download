@@ -20,6 +20,7 @@ class DownloadHistoryTests(unittest.TestCase):
             self.assertNotIn("output_name", task.payload())
             command, _, _ = manager._build_command(url=task.engine_url, quality="best", output_dir=directory, proxy="", auto_proxy=True, output_name=task.output_name)
             self.assertIn("after_move:__ED_OUTPUT__%(filepath)s", command)
+            self.assertIn("--progress", command)
             self.assertNotIn("signature", command[command.index("-o") + 1])
 
     def test_user_facing_error_categories(self):
@@ -27,6 +28,9 @@ class DownloadHistoryTests(unittest.TestCase):
         self.assertEqual(classify_download_error("The web client only works when logged-in")["code"], "LOGIN_REQUIRED")
         self.assertEqual(classify_download_error("HTTP Error 403: Forbidden")["code"], "ACCESS_RESTRICTED")
         self.assertEqual(classify_download_error("Requested format is not available")["code"], "FORMAT_UNAVAILABLE")
+        challenge = classify_download_error("Sign in to confirm you're not a bot", hostname="www.youtube.com")
+        self.assertEqual(challenge["code"], "WEBSITE_VERIFICATION_REQUIRED")
+        self.assertIn("不代表你没有登录", challenge["message"])
 
     def test_platform_name_is_present_in_actionable_errors(self):
         login = classify_download_error("login required", hostname="www.instagram.com")

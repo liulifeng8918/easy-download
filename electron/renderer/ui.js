@@ -144,9 +144,10 @@ async function loadState() {
     applySettings(state.settings);
     const runtime = state.engine?.jsRuntime?.available ? '兼容组件已就绪' : '兼容组件待更新';
     $('engineStatus').textContent = `${state.engine?.version || '下载引擎'} · ${runtime}`;
-    if (state.cookieBridge?.paired) {
+    const liveConnection = await window.easyDownload.browserConnectionStatus();
+    if (liveConnection.connected) {
       chromeConnected = true;
-      setChromeConnectionVisual('已同步', 'Chrome 登录状态已同步', '已发现的网站会自动加入同步范围。');
+      setChromeConnectionVisual('已连接', 'Chrome 下载入口已验证', '网站登录状态在每次浏览器下载前按已授权范围同步。');
     } else if (!chromeConnected) {
       setChromeConnectionVisual('尚未连接', '需要登录时，点击下面按钮', '易下载会打开 Chrome、扩展文件夹和连接向导，扩展加载后自动完成连接。');
     }
@@ -327,7 +328,7 @@ async function submitProQueue(items) {
   async function runOne(item) {
     for (let attempt = 0; attempt <= retries; attempt += 1) {
       item.status = 'running'; item.attempt = attempt + 1; renderProQueue(); saveProQueue();
-      try { const result = await window.easyDownload.downloadStart({ input: item.input, quality: item.quality, format: item.quality === 'audio' ? 'mp3' : item.format, premium: true }); item.status = 'submitted'; item.taskId = result.task?.id || ''; item.error = ''; submitted += 1; return; }
+      try { const result = await window.easyDownload.downloadStart({ input: item.input, quality: item.quality, format: item.quality === 'audio' ? 'mp3' : item.format, outputDir: item.outputDir, premium: true }); item.status = 'submitted'; item.taskId = result.task?.id || ''; item.error = ''; submitted += 1; return; }
       catch (error) { item.error = errorText(error); if (attempt >= retries) { item.status = 'failed'; return; } }
     }
   }
@@ -545,6 +546,7 @@ async function monitorChromePairing(ticket) {
   for (let attempt = 0; attempt < 600 && chromeSetupTicket === ticket; attempt += 1) {
     try {
       const status = await window.easyDownload.browserSetupStatus(ticket);
+      if (status.error && !status.paired) feedback('pairingMessage', status.error, 'error');
       if (status.paired) {
         chromeConnected = true;
         setChromeConnectionVisual('已连接', 'Chrome 已连接，正在同步登录状态', '已完成自动配对；请回到下载任务重试刚才的视频。');
@@ -592,7 +594,7 @@ $('openManualPdf').onclick = () => action('openManualPdf', 'pairingMessage', asy
 $('checkUpdate').onclick = () => action('checkUpdate', 'updateMessage', async () => { feedback('updateMessage', '正在检查更新…'); const { update } = await request('/v1/update/check'); if (!update.available) { feedback('updateMessage', update.configured ? '当前已是最新版本。' : '更新服务暂未就绪，请联系发行方获取新版本。'); return; } feedback('updateMessage', `发现 ${update.manifest.version}，正在下载并校验…`); const result = await request('/v1/update/download', {}); updatePackagePath = result.package.path; $('openUpdate').hidden = false; feedback('updateMessage', '更新包校验完成，可以运行安装。', 'success'); });
 $('openUpdate').onclick = () => action('openUpdate', 'updateMessage', async () => { await window.easyDownload.openUpdate(updatePackagePath); });
 
-window.easyDownload.onDownloadProgress(event => { if (event.message) feedback('message', event.message); refreshTasks(); });
+window.easyDownload.onDownloadProgress(event => { if (event.message) feedback('message', event.message, event.stage === 'failed' ? 'error' : ''); refreshTasks(); });
 window.easyDownload.onBrowserLink(event => {
   const url = String(event?.url || '').trim();
   if (!url) return;
@@ -602,7 +604,7 @@ window.easyDownload.onBrowserLink(event => {
   $('url').focus();
 });
 window.easyDownload.onBrowserPaired(() => {
-  if (chromeSetupTicket) {
+  {
     chromeConnected = true;
     setChromeConnectionVisual('已连接', 'Chrome 已连接，正在同步登录状态', '已完成自动配对；请回到下载任务重试刚才的视频。');
     feedback('pairingMessage', 'Chrome 已连接，不需要复制连接码。', 'success');

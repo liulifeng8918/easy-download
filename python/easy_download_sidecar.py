@@ -22,6 +22,7 @@ from vendor.life_license.storage import DpapiStorage, StorageError
 
 
 MAX_BODY_BYTES = 512 * 1024
+ENGINE_REVISION = '1.0.1-r1'
 DEFAULT_PROXY = "http://127.0.0.1:7892"
 PROXY_SCHEMES = frozenset({"http", "https", "socks4", "socks5", "socks5h"})
 COMMON_PROXY_PORTS = (7890, 7891, 7892, 1080, 10808, 10809, 8080)
@@ -233,7 +234,7 @@ def make_handler(state: SidecarState):
                 return
             route = urlparse(self.path).path
             if route == "/health":
-                self.send_json(200, {"ok": True, "service": "easy-download-sidecar", "version": state.version})
+                self.send_json(200, {"ok": True, "service": "easy-download-sidecar", "version": state.version, "engineRevision": ENGINE_REVISION})
             elif route == "/v1/state":
                 self.send_json(200, {
                     "ok": True,
@@ -253,6 +254,8 @@ def make_handler(state: SidecarState):
                 self.send_json(200, {"ok": True, "candidates": candidates, "proxy": candidates[0] if candidates else ""})
             elif route == "/v1/pairing":
                 self.send_json(200, {"ok": True, "bridgeToken": state.bridge_token, "paired": state.cookie_paired})
+            elif route == "/v1/douyin/session-cookies":
+                self.send_json(200, {"ok": True, "cookies": state.cookie_store.browser_session_cookies("douyin.com")})
             elif route == "/v1/translation/settings":
                 self.send_json(200, {"ok": True, "translation": state.translation_config()})
             elif route == "/v1/websites":

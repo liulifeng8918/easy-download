@@ -8,6 +8,7 @@ const { DownloadController } = require('./download/controller.cjs');
 const { DouyinResolver } = require('./download/douyin-resolver.cjs');
 const { resolveYifan } = require('./download/yifan-resolver.cjs');
 const { verifyMedia } = require('./download/media-verifier.cjs');
+const { sidecarArguments } = require('./download/sidecar-launch.cjs');
 
 function diagnostic(message, error) {
   const line = `[${new Date().toISOString()}] ${message}${error ? ` ${error.stack || error}` : ''}\n`;
@@ -41,6 +42,8 @@ let douyinResolver;
 let browserBridge;
 let browserBridgeToken;
 let browserBridgePort;
+let browserConnected = false;
+let browserLastSeen = 0;
 const setupTickets = new Map();
 
 const ownsInstance = app.requestSingleInstanceLock();
@@ -64,9 +67,7 @@ function startSidecar() {
   sidecarPort = Number.isInteger(configuredPort) && configuredPort >= 1024 && configuredPort <= 65535 ? configuredPort : 17893;
   sidecarToken = randomBytes(32).toString('base64url');
   const command = pythonCommand();
-  const args = command.toLowerCase().endsWith('.exe') && command === bundledSidecar
-    ? ['--port', String(sidecarPort), '--token', sidecarToken, '--project-root', root]
-    : [sidecarScript, '--port', String(sidecarPort), '--token', sidecarToken, '--project-root', root];
+  const args = sidecarArguments({script: command === bundledSidecar ? null : sidecarScript, port: sidecarPort, token: sidecarToken, root});
   sidecar = spawn(command, args, {
     cwd: root,
     env: portableMode ? { ...process.env, LOCALAPPDATA: path.join(portableDataRoot, 'local') } : process.env,
@@ -114,8 +115,11 @@ async function waitForSidecar() {
       throw new Error(`下载引擎进程提前退出（${detail}）。请关闭旧版易下载后重试。`);
     }
     try {
-      return await sidecarRequest('/health');
+      const health = await sidecarRequest('/health');
+      if (health.engineRevision !== '1.0.1-r1') throw Object.assign(new Error('打包的下载引擎与软件版本不一致，不能继续启动。请获取完整的 1.0.1 版本。'), { code: 'ENGINE_BUILD_MISMATCH' });
+      return health;
     } catch (error) {
+      if (error.code === 'ENGINE_BUILD_MISMATCH') throw error;
       lastError = error;
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
@@ -129,7 +133,7 @@ function bridgeJson(response, status, payload) {
     'content-type': 'application/json; charset=utf-8',
     'content-length': raw.length,
     'access-control-allow-origin': '*',
-    'access-control-allow-headers': 'content-type',
+      'access-control-allow-headers': 'content-type, x-easy-download-bridge',
   });
   response.end(raw);
 }
@@ -180,12 +184,12 @@ function startBrowserBridge() {
   if (!Number.isInteger(browserBridgePort) || browserBridgePort < 1024 || browserBridgePort > 65535) browserBridgePort = 17894;
   browserBridge = createServer(async (request, response) => {
     if (request.method === 'OPTIONS') {
-      response.writeHead(204, { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type', 'access-control-allow-methods': 'GET,POST,OPTIONS' });
+      response.writeHead(204, { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type, x-easy-download-bridge', 'access-control-allow-methods': 'GET,POST,OPTIONS' });
       response.end();
       return;
     }
     if (request.method === 'GET' && request.url === '/health') {
-      bridgeJson(response, 200, { ok: true, service: 'easy-download-browser-bridge', version: '1.0.0' });
+      bridgeJson(response, 200, { ok: true, service: 'easy-download-browser-bridge', version: app.getVersion() });
       return;
     }
     const parsedUrl = new URL(request.url, `http://127.0.0.1:${browserBridgePort}`);
@@ -197,7 +201,7 @@ function startBrowserBridge() {
         response.end('<h1>连接已过期</h1><p>请回到易下载重新点击“连接 Chrome”。</p>');
         return;
       }
-      const html = Buffer.from(setupPage(ticket), 'utf8');
+      const html = Buffer.from(setupPage(ticket).replace("if(d.expired)", "if(d.error){el.textContent=d.error;setTimeout(check,1000);return}if(d.expired)"), 'utf8');
       response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'content-length': html.length });
       response.end(html);
       return;
@@ -206,7 +210,7 @@ function startBrowserBridge() {
       const ticket = parsedUrl.searchParams.get('ticket') || '';
       pruneSetupTickets();
       const entry = setupTickets.get(ticket);
-      bridgeJson(response, 200, { ok: true, paired: Boolean(entry?.paired), expired: !entry });
+      bridgeJson(response, 200, { ok: true, paired: Boolean(entry?.paired), expired: !entry, error: entry?.error || '' });
       return;
     }
     if (request.method === 'POST' && parsedUrl.pathname === '/v1/browser/bootstrap') {
@@ -222,25 +226,62 @@ function startBrowserBridge() {
       request.on('end', () => {
         try {
           pruneSetupTickets();
-          const ticket = String(JSON.parse(raw || '{}').ticket || '');
+          const payload = JSON.parse(raw || '{}');
+          const ticket = String(payload.ticket || '');
           const entry = setupTickets.get(ticket);
           if (!entry || entry.expiresAt <= Date.now()) {
             bridgeJson(response, 410, { ok: false, code: 'SETUP_TICKET_EXPIRED', message: '连接已过期，请回到易下载重新开始连接。' });
             return;
           }
+          if (payload.protocolVersion !== 2) {
+            entry.error = '检测到旧版扩展，请在 Chrome 中停用旧副本，并加载本次 1.0.1 的 extension 文件夹。';
+            bridgeJson(response, 426, {ok:false,code:'EXTENSION_UPDATE_REQUIRED',message:entry.error});
+            return;
+          }
           if (entry.used) {
-            bridgeJson(response, 409, { ok: false, code: 'SETUP_TICKET_USED', message: '连接已经完成，请回到易下载查看状态。' });
+            // Installing/reloading the extension can reload the wizard while
+            // acknowledgement is in flight. An unexpired ticket is retryable;
+            // issuing credentials still does not mark the connection paired.
+            bridgeJson(response, 200, { ok: true, bridgeToken: browserBridgeToken });
             return;
           }
           entry.used = true;
-          entry.paired = true;
           bridgeJson(response, 200, { ok: true, bridgeToken: browserBridgeToken });
-          mainWindow?.webContents.send('browser-paired');
         } catch (_) {
           bridgeJson(response, 400, { ok: false, code: 'SETUP_REQUEST_INVALID', message: '连接请求无效，请重新开始连接。' });
         }
       });
       return;
+    }
+    if (parsedUrl.pathname === '/v1/browser/status' || parsedUrl.pathname === '/v1/browser/confirm') {
+      if (!browserBridgeToken || request.headers['x-easy-download-bridge'] !== browserBridgeToken) {
+        bridgeJson(response, 401, { ok: false, code: 'BRIDGE_UNAUTHORIZED', message: 'Chrome 连接已失效，请在软件设置中重新连接。' });
+        return;
+      }
+      if (request.method === 'GET' && parsedUrl.pathname.endsWith('/status')) {
+        browserConnected = true;
+        browserLastSeen = Date.now();
+        bridgeJson(response, 200, { ok: true, connected: true, version: app.getVersion() });
+        mainWindow?.webContents.send('browser-paired');
+        return;
+      }
+      if (request.method === 'POST' && parsedUrl.pathname.endsWith('/confirm')) {
+        let raw = '';
+        request.on('data', chunk => { raw += chunk; if (raw.length > 8192) request.destroy(); });
+        request.on('end', () => {
+          try {
+            const entry = setupTickets.get(String(JSON.parse(raw || '{}').ticket || ''));
+            if (!entry?.used || entry.expiresAt <= Date.now()) { bridgeJson(response, 410, {ok:false,message:'连接向导已过期'}); return; }
+            entry.paired = true;
+            entry.error = '';
+            browserConnected = true;
+            browserLastSeen = Date.now();
+            bridgeJson(response, 200, { ok: true });
+            mainWindow?.webContents.send('browser-paired');
+          } catch (_) { bridgeJson(response, 400, { ok: false, message: '连接确认无效' }); }
+        });
+        return;
+      }
     }
     if (request.method !== 'POST' || request.url !== '/v1/browser/submit') {
       bridgeJson(response, 404, { ok: false, code: 'NOT_FOUND', message: '浏览器下载入口不存在' });
@@ -276,15 +317,18 @@ function startBrowserBridge() {
           return;
         }
         const { settings } = await sidecarRequest('/v1/settings');
-        const result = await downloadController.start({
+        mainWindow?.show();
+        mainWindow?.focus();
+        // Chromium extension fetches must not wait for a multi-minute site
+        // resolution/verification. Acknowledge delivery, report outcome in app.
+        bridgeJson(response, 202, { ok: true, message: '链接已交给易下载，解析进度与结果请看软件窗口。', url: input });
+        void downloadController.start({
           input,
           quality: settings.quality || 'best',
           format: settings.format || 'mp4',
           premium: false,
-        });
-        mainWindow?.show();
-        mainWindow?.focus();
-        bridgeJson(response, 202, { ok: true, message: result.message || '已加入下载任务。', task: result.task, url: result.url });
+        }).then(result => mainWindow?.webContents.send('download-progress', {url: input,stage:'submitted',message:result.message || '下载任务已创建。'}))
+          .catch(error => mainWindow?.webContents.send('download-progress', {url:input,stage:'failed',message:error.message || '这个视频暂时无法下载。'}));
       } catch (error) {
         bridgeJson(response, Number(error?.status) || 400, { ok: false, code: error?.code || 'BROWSER_DOWNLOAD_FAILED', message: error?.message || '浏览器下载失败，请回到易下载查看提示。' });
       }
@@ -337,6 +381,7 @@ app.whenReady().then(async () => {
     BrowserWindow,
     session: require('electron').session,
     parent: () => mainWindow,
+    loadCookies: async () => (await sidecarRequest('/v1/douyin/session-cookies')).cookies,
     progress: (event) => mainWindow?.webContents.send('download-progress', event),
   });
   downloadController = new DownloadController({
@@ -346,7 +391,10 @@ app.whenReady().then(async () => {
     verifyMedia: (task, expected) => verifyMedia(task, expected, path.join(root, 'bin', 'ffmpeg.exe')),
     progress: (event) => mainWindow?.webContents.send('download-progress', event),
   });
-  ipcMain.handle('sidecar-request', (_event, route, init = {}) => sidecarRequest(route, init));
+  ipcMain.handle('sidecar-request', (_event, route, init = {}) => {
+    if (String(route).split('?')[0] === '/v1/douyin/session-cookies') throw new Error('浏览器会话仅限主进程使用');
+    return sidecarRequest(route, init);
+  });
   ipcMain.handle('download-start', (_event, payload = {}) => downloadController.start(payload));
   ipcMain.handle('download-batch', (_event, payload = {}) => downloadController.startBatch(payload));
   ipcMain.handle('download-tasks', () => downloadController.listTasks());
@@ -383,8 +431,9 @@ app.whenReady().then(async () => {
   ipcMain.handle('browser-setup-status', (_event, ticket) => {
     pruneSetupTickets();
     const entry = setupTickets.get(String(ticket || ''));
-    return { ok: true, paired: Boolean(entry?.paired), expired: !entry };
+    return { ok: true, paired: Boolean(entry?.paired), expired: !entry, error: entry?.error || '' };
   });
+  ipcMain.handle('browser-connection-status', () => ({ connected: browserConnected, lastSeen: browserLastSeen }));
   ipcMain.handle('open-manual', async () => {
     const manual = path.join(root, 'docs', '易下载用户操作手册.pdf');
     if (!existsSync(manual)) throw new Error('用户手册尚未打包，请重新安装易下载。');

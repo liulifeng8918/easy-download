@@ -6,3 +6,5 @@ $work = Join-Path $project 'build\pyinstaller'
 New-Item -ItemType Directory -Force -Path $runtime | Out-Null
 & python -m PyInstaller --noconfirm --clean --distpath $runtime --workpath $work $spec
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed with exit code $LASTEXITCODE" }
+& python (Join-Path $project 'scripts\verify-frozen-engine.py')
+if ($LASTEXITCODE -ne 0) { throw 'Frozen engine release gate failed' }

@@ -7,7 +7,7 @@ function isDouyinNavigation(raw) {
   } catch { return false; }
 }
 function pageVideoId(raw) {
-  try { const url = new URL(raw); return url.pathname.match(/^\/video\/(\d+)/)?.[1] || url.searchParams.get('modal_id'); } catch { return null; }
+  try { const url = new URL(raw); return url.pathname.match(/^\/(?:video|share\/video)\/(\d+)/)?.[1] || url.searchParams.get('modal_id'); } catch { return null; }
 }
 function selectDouyinMedia(state, expectedId) {
   if (!state || !isDouyinNavigation(state.pageUrl)) return null;
@@ -16,7 +16,15 @@ function selectDouyinMedia(state, expectedId) {
   for (const video of state.videos || []) {
     if (!video.active || !(video.duration > 0) || !Number.isFinite(video.duration)) continue;
     let url;
-    try { url = new URL(validatePublicUrl(video.src)); } catch { continue; }
+    try { url = new URL(validatePublicUrl(video.src)); } catch {
+      // MediaSource blobs are not downloadable URLs. Accept only an observed
+      // CDN request carrying this exact public video ID, never a guess.
+      const match = (state.networkMedia || []).find(raw => {
+        try { const u = new URL(validatePublicUrl(raw)); return domainMatches(u.hostname, 'douyinvod.com') && u.searchParams.get('__vid') === pageId; } catch { return false; }
+      });
+      if (!match) continue;
+      url = new URL(match);
+    }
     if (!domainMatches(url.hostname, 'douyinvod.com') && !(domainMatches(url.hostname, 'douyin.com') && url.pathname === '/aweme/v1/play/')) continue;
     // Prefer proof carried by the actual media URL; never accept a recommendation.
     const mediaId = url.searchParams.get('__vid');
@@ -43,8 +51,8 @@ function collectObservation() {
   };
 }
 class DouyinResolver {
-  constructor({ BrowserWindow, session, parent, progress, diagnostic, timeoutMs = 45000 }) {
-    Object.assign(this, { BrowserWindow, session, parent, progress, diagnostic, timeoutMs });
+  constructor({ BrowserWindow, session, parent, progress, diagnostic, loadCookies, timeoutMs = 90000 }) {
+    Object.assign(this, { BrowserWindow, session, parent, progress, diagnostic, loadCookies, timeoutMs });
     this.windows = new Set();
     this.tail = Promise.resolve();
     this.disposed = false;
@@ -73,11 +81,24 @@ class DouyinResolver {
     if (this.disposed) throw new DownloadError('CANCELLED', '本次解析已取消。');
     if (!isDouyinNavigation(url)) throw new DownloadError('INVALID_URL', '这不是抖音视频链接。');
     const browserSession = this.session.fromPartition('persist:easy-download-douyin-v1');
-    // Do not import the user's Chrome session; only this app's site session is used.
+    // Only import the Douyin cookies the user already explicitly synchronized
+    // via this app's Chrome extension; no direct Chrome database access.
+    if (this.loadCookies) {
+      const cookies = await this.loadCookies();
+      for (const cookie of cookies || []) {
+        const domain = String(cookie.domain || '').replace(/^\./, '');
+        if (domainMatches(domain, 'douyin.com')) await browserSession.cookies.set(cookie).catch(() => {});
+      }
+    }
+    const observedMedia = [];
     browserSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
     browserSession.setPermissionCheckHandler(() => false);
     browserSession.webRequest.onBeforeRequest({ urls: ['*://*/*'] }, (details, callback) => {
-      try { validatePublicUrl(details.url); callback({ cancel: false }); } catch { callback({ cancel: true }); }
+      try {
+        const target = new URL(validatePublicUrl(details.url));
+        if (domainMatches(target.hostname, 'douyinvod.com') && target.searchParams.get('__vid') && observedMedia.length < 100) observedMedia.push(target.href);
+        callback({ cancel: false });
+      } catch { callback({ cancel: true }); }
     });
     await browserSession.setProxy(settings.proxy && !settings.autoProxy ? { mode: 'fixed_servers', proxyRules: settings.proxy } : { mode: 'direct' });
     const window = new this.BrowserWindow({
@@ -94,16 +115,19 @@ class DouyinResolver {
       this.diagnostic?.({ kind: eventName, allowed, host: (() => { try { return new URL(target).hostname; } catch { return ''; } })() });
       if (!allowed) event.preventDefault();
     });
-    let cancelled = false, verificationShown = false, loadError;
+    let cancelled = false, verificationShown = false, slowNotice = false, loadError;
+    const startedAt = Date.now();
     let deadline = Date.now() + this.timeoutMs;
     window.on('closed', () => { cancelled = true; this.windows.delete(window); });
     window.loadURL(url).catch(error => { loadError = error; this.diagnostic?.({ kind: 'load-failed', code: error.code, errno: error.errno }); });
     try {
       let expectedId = pageVideoId(url);
       while (Date.now() < deadline && !cancelled && !this.disposed) {
-        if (window.webContents.isLoadingMainFrame()) {
-          await new Promise(resolve => setTimeout(resolve, 500));
-          continue;
+        // Do not require every page resource to finish loading. A playable
+        // video can already be present while analytics/other requests linger.
+        if (!slowNotice && Date.now() - startedAt > 12000) {
+          slowNotice = true;
+          this.progress?.({stage:'page-loading',message:'网站加载较慢，正在等待视频就绪，无需重复点击下载。'});
         }
         let state;
         try {
@@ -113,6 +137,7 @@ class DouyinResolver {
           ]);
         } catch { /* a redirect may replace the document */ }
         if (state) {
+          state.networkMedia = observedMedia;
           expectedId ||= pageVideoId(state.pageUrl);
           if (state.encrypted) throw new DownloadError('DRM_PROTECTED', '这个视频使用加密保护，易下载不提供下载。');
           if (state.unavailable) throw new DownloadError('VIDEO_UNAVAILABLE', '这个视频已删除、不可见或当前无法播放。');
@@ -146,4 +171,4 @@ class DouyinResolver {
   }
   dispose() { this.disposed = true; for (const window of this.windows) if (!window.isDestroyed()) window.destroy(); this.windows.clear(); }
 }
-module.exports = { DouyinResolver, selectDouyinMedia, isDouyinNavigation, pageVideoId };
+module.exports = { DouyinResolver, selectDouyinMedia, isDouyinNavigation, pageVideoId, collectObservation };

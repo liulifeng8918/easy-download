@@ -15,6 +15,7 @@ chrome.runtime.sendMessage({ type: 'current-tab' }, result => {
   urlNode.textContent = result?.title || currentUrl || '当前页面不是可下载视频';
   urlNode.title = currentUrl;
   unsupportedNode.hidden = supported || !currentUrl;
+  if (result?.error) unsupportedNode.textContent = result.error;
   document.getElementById('direct').disabled = !supported;
   document.getElementById('send').disabled = !supported;
 });

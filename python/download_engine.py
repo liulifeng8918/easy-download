@@ -17,6 +17,7 @@ from cookie_store import CookieStore
 
 
 QUALITY_FORMATS = {
+    "2160": "bv*[height<=2160]+ba/b[height<=2160]/b",
     "720": "bv*[height<=720]+ba/b[height<=720]/b",
     "1080": "bv*[height<=1080]+ba/b[height<=1080]/b",
     "best": "bv*+ba/b",
@@ -26,6 +27,7 @@ TASK_URL_PATTERN = re.compile(r"^https?://[^\s]+$", re.IGNORECASE)
 OVERSEAS_DOMAINS = ("youtube.com", "youtu.be", "tiktok.com", "vimeo.com", "instagram.com", "facebook.com", "twitter.com", "x.com")
 YIFAN_MEDIA_HOSTS = ("dataphasore.vip", "netvortexc.vip", "netvortexb.vip", "netvortexe.vip", "netvortexd.vip")
 PLATFORM_NAMES = (
+    ("youtube.com", "YouTube"), ("youtu.be", "YouTube"),
     ("xiaohongshu.com", "小红书"), ("xhslink.com", "小红书"),
     ("weibo.com", "微博"), ("weibo.cn", "微博"),
     ("ixigua.com", "西瓜视频"), ("tiktok.com", "TikTok"),
@@ -50,6 +52,8 @@ def classify_download_error(message: str, *, hostname: str = "", proxy_configure
     name = platform_name(hostname)
     if "unsupported url" in text or "no suitable extractor" in text:
         return {"code": "UNSUPPORTED_URL", "message": f"{name}当前链接类型暂未通过支持验证。请复制具体的视频播放页地址，而不是网站首页、搜索页或个人主页。"}
+    if "not a bot" in text or "captcha" in text or "confirm you're" in text or "confirm you’re" in text:
+        return {"code": "WEBSITE_VERIFICATION_REQUIRED", "message": f"{name}要求网站人机验证，不代表你没有登录。请在 Chrome 正常完成网站验证，再到易下载设置重新同步登录状态后重试；如果仍失败，当前下载请求未获网站放行，暂时无法下载。"}
     if any(term in text for term in ("login", "logged-in", "sign in", "authentication", "cookies", "cookie")):
         return {"code": "LOGIN_REQUIRED", "message": f"{name}要求先登录或同步登录状态。请确认浏览器中能正常播放，再按设置中的连接浏览器提示操作。"}
     if any(term in text for term in ("proxyerror", "unable to connect", "timed out", "resolve", "network is unreachable")):
@@ -236,7 +240,7 @@ class DownloadManager:
         output_name = None
         if engine_url and engine_url != url:
             title = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", source_title)[:100].strip(" .") or "视频"
-            source_id = source_id if re.fullmatch(r"\d{1,30}", source_id) else uuid.uuid4().hex[:16]
+            source_id = source_id if re.fullmatch(r"[A-Za-z0-9_-]{1,160}", source_id) else uuid.uuid4().hex[:16]
             output_name = f"{title} [{source_id}]".replace("%", "%%") + ".%(ext)s"
         chosen_format = "mp3" if quality == "audio" else output_format if output_format in {"mp4", "mkv"} else "mp4"
         task = Task(str(uuid.uuid4()), url.strip(), quality, str(output), engine_url=(engine_url or url).strip(), output_name=output_name, referer=referer, user_agent=user_agent, output_format=chosen_format)
@@ -253,6 +257,7 @@ class DownloadManager:
             "--ignore-config",
             "--proxy", proxy if use_proxy else "",
             "--newline",
+            "--progress",
             "--no-warnings",
             "--socket-timeout", "30",
             "--no-playlist",
@@ -346,7 +351,7 @@ class DownloadManager:
         suffix = video.suffix.lower()
         subtitle_codec = "mov_text" if suffix in {".mp4", ".mov"} else "srt"
         destination = video.with_name(f"{video.stem}.{target_language}.subtitled{video.suffix}")
-        temporary = destination.with_name(destination.name + ".partial")
+        temporary = destination.with_name(destination.stem + ".partial" + destination.suffix)
         command = [
             str(ffmpeg), "-hide_banner", "-loglevel", "error", "-nostdin", "-y",
             "-i", str(video), "-i", str(subtitle),

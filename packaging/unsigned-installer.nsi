@@ -25,7 +25,7 @@ BrandingText "易下载 ${APP_VERSION} · 未签名测试版"
 !insertmacro MUI_PAGE_WELCOME
 !insertmacro MUI_PAGE_DIRECTORY
 !insertmacro MUI_PAGE_INSTFILES
-!define MUI_FINISHPAGE_TEXT "易下载文件已安装。$\r$\n$\r$\n请使用桌面上的“易下载 ${APP_VERSION}”快捷方式打开新版。$\r$\n$\r$\n安装完成不代表授权完成：打开后点击右上角输入激活码。"
+!define MUI_FINISHPAGE_TEXT "易下载文件已安装。$\r$\n$\r$\n请使用桌面上的“易下载 ${APP_VERSION}”快捷方式打开新版。$\r$\n$\r$\n单个视频下载免费且不限次数，无需激活；专业版功能才需要激活码。"
 !insertmacro MUI_PAGE_FINISH
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES

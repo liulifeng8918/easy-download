@@ -38,6 +38,7 @@ contextBridge.exposeInMainWorld('easyDownload', {
   openExtension() { return ipcRenderer.invoke('open-extension'); },
   connectChrome() { return ipcRenderer.invoke('connect-chrome'); },
   browserSetupStatus(ticket) { return ipcRenderer.invoke('browser-setup-status', ticket); },
+  browserConnectionStatus() { return ipcRenderer.invoke('browser-connection-status'); },
   onBrowserPaired(callback) {
     const listener = () => callback();
     ipcRenderer.on('browser-paired', listener);

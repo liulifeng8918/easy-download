@@ -21,6 +21,7 @@ delete env.ELECTRON_RUN_AS_NODE;
 const checks = [];
 let app, server;
 const expectedPort = Number(process.env.EASY_DOWNLOAD_PORT || 17893);
+const bridgeBase = `http://127.0.0.1:${Number(process.env.EASY_DOWNLOAD_BROWSER_PORT || 17894)}`;
 const launchOptions = { executablePath, args: [...(executableIndex >= 0 ? [] : [root]), `--user-data-dir=${path.join(scratch, 'roaming')}`], cwd: root, env, timeout: 45000 };
 function enginePortOpen() {
   return new Promise(resolve => {
@@ -87,11 +88,18 @@ async function textContains(page, selector, value, timeout = 20000) {
   checks.push('settings persistence, single-source browser authorization guidance, and update unavailable feedback');
   const chromeSetup = await page.evaluate(() => window.easyDownload.connectChrome());
   assert.ok(chromeSetup.ticket);
-  const setupPending = await fetch(`http://127.0.0.1:17894/v1/browser/setup-status?ticket=${encodeURIComponent(chromeSetup.ticket)}`).then(response => response.json());
+  const setupPending = await fetch(`${bridgeBase}/v1/browser/setup-status?ticket=${encodeURIComponent(chromeSetup.ticket)}`).then(response => response.json());
   assert.equal(setupPending.paired, false);
-  const bootstrap = await fetch('http://127.0.0.1:17894/v1/browser/bootstrap', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ticket: chromeSetup.ticket }) });
+  const bootstrap = await fetch(`${bridgeBase}/v1/browser/bootstrap`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ticket: chromeSetup.ticket, protocolVersion: 2 }) });
   assert.equal(bootstrap.status, 200);
-  const setupDone = await fetch(`http://127.0.0.1:17894/v1/browser/setup-status?ticket=${encodeURIComponent(chromeSetup.ticket)}`).then(response => response.json());
+  const boot = await bootstrap.json();
+  const pendingAck = await fetch(`${bridgeBase}/v1/browser/setup-status?ticket=${encodeURIComponent(chromeSetup.ticket)}`).then(r=>r.json());
+  assert.equal(pendingAck.paired, false, 'credential issuance alone is not connected');
+  const retryBootstrap = await fetch(`${bridgeBase}/v1/browser/bootstrap`, {method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({ticket:chromeSetup.ticket,protocolVersion:2})});
+  assert.equal(retryBootstrap.status,200,'an extension reload can retry an unexpired setup ticket');
+  const ack = await fetch(`${bridgeBase}/v1/browser/confirm`, {method:'POST',headers:{'content-type':'application/json','x-easy-download-bridge':boot.bridgeToken},body:JSON.stringify({ticket:chromeSetup.ticket})});
+  assert.equal(ack.status,200);
+  const setupDone = await fetch(`${bridgeBase}/v1/browser/setup-status?ticket=${encodeURIComponent(chromeSetup.ticket)}`).then(response => response.json());
   assert.equal(setupDone.paired, true);
   checks.push('two-step Chrome connection wizard issues a one-time ticket and completes automatic local bootstrap');
   const selectedDirectory = path.join(scratch, 'downloads'); fs.mkdirSync(selectedDirectory);
@@ -102,7 +110,7 @@ async function textContains(page, selector, value, timeout = 20000) {
   assert.equal(fs.realpathSync.native(await page.locator('#outputDir').inputValue()).toLowerCase(), fs.realpathSync.native(selectedDirectory).toLowerCase());
   checks.push('directory selection IPC persists the chosen directory (native picker stubbed)');
   const pairing = await page.evaluate(() => window.easyDownload.request('/v1/pairing'));
-  const browserEntry = await fetch('http://127.0.0.1:17894/v1/browser/submit', { method: 'POST', headers: { 'content-type': 'application/json', 'x-easy-download-bridge': pairing.bridgeToken }, body: JSON.stringify({ url: 'https://www.youtube.com/watch?v=browser-entry-test', mode: 'preview', title: '浏览器入口回归测试' }) });
+  const browserEntry = await fetch(`${bridgeBase}/v1/browser/submit`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-easy-download-bridge': pairing.bridgeToken }, body: JSON.stringify({ url: 'https://www.youtube.com/watch?v=browser-entry-test', mode: 'preview', title: '浏览器入口回归测试' }) });
   assert.equal(browserEntry.status, 200);
   assert.equal((await browserEntry.json()).ok, true);
   assert.equal(await page.locator('#url').inputValue(), 'https://www.youtube.com/watch?v=browser-entry-test');

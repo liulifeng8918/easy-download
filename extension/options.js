@@ -21,9 +21,13 @@ async function render() {
   }
   const summary = document.getElementById("connectionSummary");
   if (summary) {
-    summary.textContent = data.bridgeToken
-      ? "已连接易下载。需要同步时，扩展会自动发现已登记平台并推送登录状态。"
-      : "请回到易下载设置，点击“连接 Chrome”。扩展加载后会自动完成连接，不需要复制连接码。";
+    if (!data.bridgeToken) summary.textContent = '请回到易下载设置，点击“连接 Chrome”。';
+    else {
+      try {
+        const response = await fetch('http://127.0.0.1:17894/v1/browser/status', {headers:{'X-Easy-Download-Bridge':data.bridgeToken}});
+        summary.textContent = response.ok ? '已验证连接到当前运行的易下载。浏览器下载前会同步已授权网站的登录状态。' : '连接已失效：可能切换了绿色版目录，请在当前易下载设置中重新连接 Chrome。';
+      } catch (_) { summary.textContent = '易下载未运行。已保存连接，但尚未验证是否有效。'; }
+    }
   }
 }
 

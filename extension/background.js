@@ -92,6 +92,12 @@ async function submitUrl(url, mode = "direct", title = "") {
   if (!await supportedUrl(url)) throw new Error("暂不支持此网站，请在易下载中粘贴具体的视频播放页链接。");
   const bridgeToken = await getBridgeToken();
   if (!bridgeToken) throw new Error("请先在易下载设置中点击“连接 Chrome”。");
+  // A saved credential is not proof of a live connection to this app copy.
+  const status = await fetch("http://127.0.0.1:17894/v1/browser/status", { headers: { "X-Easy-Download-Bridge": bridgeToken } }).catch(() => null);
+  if (!status) throw new Error("易下载未运行，请先打开软件。");
+  if (!status.ok) throw new Error("浏览器连接已失效（可能切换了绿色版目录）。请到易下载设置重新连接 Chrome。");
+  await discoverKnownDomains();
+  await pushCookies();
   try {
     const response = await fetch(DOWNLOAD_ENDPOINT, { method: "POST", headers: { "Content-Type": "application/json", "X-Easy-Download-Bridge": bridgeToken }, body: JSON.stringify({ url, mode, title }) });
     const data = await response.json().catch(() => ({}));
@@ -109,7 +115,19 @@ async function notify(message) {
 
 async function currentTab() {
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-  return tabs[0] || null;
+  const tab = tabs[0] || null;
+  if (tab && /https?:\/\/([^/]+\.)?douyin\.com\//i.test(tab.url || '')) {
+    const address = new URL(tab.url);
+    // A concrete video/share URL is sufficient. Do not disable the toolbar
+    // just because a newly loaded page's content script is not ready yet.
+    if (address.hostname === 'v.douyin.com' || /^\/(?:video|share\/video)\/\d+/.test(address.pathname) || /^\d+$/.test(address.searchParams.get('modal_id') || '')) return tab;
+    try {
+      const video = await chrome.tabs.sendMessage(tab.id, { type: 'page-video' });
+      if (video?.error) return { ...tab, videoError: video.error };
+      if (video?.url) return { ...tab, url: video.url };
+    } catch (_) { return { ...tab, videoError: '扩展刚更新时请刷新抖音网页，再点击下载。' }; }
+  }
+  return tab;
 }
 
 async function createMenus() {
@@ -121,8 +139,11 @@ async function createMenus() {
 }
 
 chrome.contextMenus?.onClicked.addListener(async (info, tab) => {
-  const url = info.linkUrl || info.pageUrl || tab?.url || "";
-  try { await notify((await submitUrl(url, "direct", tab?.title || "")).message || "已加入易下载下载任务。"); }
+  try {
+    const current = info.linkUrl ? { url: info.linkUrl } : await currentTab();
+    if (current?.videoError) throw new Error(current.videoError);
+    await notify((await submitUrl(current?.url || info.pageUrl || tab?.url || '', "direct", tab?.title || "")).message || "已加入易下载下载任务。");
+  }
   catch (error) { await notify(error.message); }
 });
 
@@ -137,7 +158,7 @@ async function bootstrapFromTicket(ticket) {
   const response = await fetch("http://127.0.0.1:17894/v1/browser/bootstrap", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ticket: String(ticket || "") }),
+    body: JSON.stringify({ ticket: String(ticket || ""), protocolVersion: 2 }),
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || !data.bridgeToken) throw new Error(data.message || "连接向导已过期，请回到易下载重新连接。");
@@ -145,6 +166,8 @@ async function bootstrapFromTicket(ticket) {
   await createMenus();
   await discoverKnownDomains();
   await pushCookies();
+  const confirmed = await fetch("http://127.0.0.1:17894/v1/browser/confirm", { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Easy-Download-Bridge': data.bridgeToken }, body: JSON.stringify({ ticket, extensionVersion: chrome.runtime.getManifest().version }) });
+  if (!confirmed.ok) throw new Error('浏览器连接确认失败，请重新连接。');
   return { ok: true };
 }
 
@@ -165,7 +188,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
   if (message?.type === "current-tab") {
-    currentTab().then(async tab => sendResponse({ ok: true, url: tab?.url || "", title: tab?.title || "", supported: await supportedUrl(tab?.url || "") }));
+    currentTab().then(async tab => sendResponse({ ok: true, url: tab?.url || "", title: tab?.title || "", error: tab?.videoError || '', supported: !tab?.videoError && await supportedUrl(tab?.url || "") })).catch(error => sendResponse({ok:false,error:error.message}));
     return true;
   }
   if (message?.type === "save-settings") {

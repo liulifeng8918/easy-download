@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "易下载浏览器下载",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "在浏览器中下载当前视频，并自动连接易下载同步已登记网站的登录状态。",
   "permissions": ["cookies", "contextMenus", "notifications", "storage", "tabs"],
   "host_permissions": [
@@ -20,6 +20,10 @@
   ],
   "optional_host_permissions": ["*://*/*"],
   "content_scripts": [{
+    "matches": ["https://www.douyin.com/*", "https://douyin.com/*"],
+    "js": ["page-video.js"],
+    "run_at": "document_idle"
+  }, {
     "matches": ["http://127.0.0.1:17894/browser-setup*"],
     "js": ["setup.js"],
     "run_at": "document_idle"

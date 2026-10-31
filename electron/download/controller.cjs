@@ -10,13 +10,15 @@ class DownloadController {
     if (license?.needsValidation) ({ license } = await this.request('/v1/license/validate', { method: 'POST', body: '{}' }));
     if (!license?.active) throw new DownloadError(license?.errorCode || 'NOT_ACTIVATED', license?.message || '请先激活易下载。');
   }
-  async start({ input, quality = 'best', format = 'mp4', premium = false } = {}) {
+  async start({ input, quality = 'best', format = 'mp4', premium = false, outputDir } = {}) {
     const parsed = parseLinkInput(input);
-    if (!['best', '1080', '720', 'audio'].includes(quality)) throw new DownloadError('INVALID_QUALITY', '请选择有效画质。');
+    if (!['best', '2160', '1080', '720', 'audio'].includes(quality)) throw new DownloadError('INVALID_QUALITY', '请选择有效画质。');
     if (!['mp4', 'mkv', 'mp3'].includes(format)) throw new DownloadError('INVALID_FORMAT', '请选择有效输出格式。');
     if (quality === 'audio') format = 'mp3';
+    if (format === 'mp3') quality = 'audio';
     if (premium) await this.licenseGuard();
     const { settings } = await this.request('/v1/settings');
+    if (typeof outputDir === 'string' && outputDir.trim()) settings.outputDir = outputDir.trim();
     const key = JSON.stringify([parsed.url, quality, format, settings.outputDir, Boolean(premium)]);
     if (this.pending.has(key)) return this.pending.get(key);
     if (this.keys.has(key)) return { url: parsed.url, task: { id: this.keys.get(key), url: parsed.url }, message: '该视频已在下载，未重复创建任务。' };
@@ -63,10 +65,12 @@ class DownloadController {
       }
     }
     // The existing backend re-checks the real license before creating any task.
-    const browserProxy = resolved?.viaProxy && settings.proxy
-      ? { proxy: settings.proxy, autoProxy: false }
-      : { proxy: '', autoProxy: true };
-    const result = await this.request('/v1/downloads', { method: 'POST', body: JSON.stringify({ url: mediaUrl, sourceUrl: parsed.url, sourceTitle: resolved?.title, sourceId: resolved?.videoId, referer: resolved?.referer, userAgent: resolved?.userAgent, quality, format, premium, ...browserProxy }) });
+    // Generic sites must retain the saved network policy used by preflight.
+    // Only browser-resolved media must use the browser's exact route.
+    const browserProxy = resolved
+      ? (resolved.viaProxy && settings.proxy ? { proxy: settings.proxy, autoProxy: false } : { proxy: '', autoProxy: true })
+      : { proxy: settings.proxy || '', autoProxy: Boolean(settings.autoProxy) };
+    const result = await this.request('/v1/downloads', { method: 'POST', body: JSON.stringify({ url: mediaUrl, sourceUrl: parsed.url, sourceTitle: resolved?.title, sourceId: resolved?.videoId, referer: resolved?.referer, userAgent: resolved?.userAgent, quality, format, premium, outputDir: settings.outputDir, ...browserProxy }) });
     if (!result.task?.id) throw new DownloadError('TASK_CREATE_FAILED', '下载任务未创建，请重试。');
     this.sources.set(result.task.id, { url: parsed.url, resolved, key });
     this.keys.set(key, result.task.id);
@@ -76,7 +80,7 @@ class DownloadController {
     const response = await this.request('/v1/downloads');
     const tasks = await Promise.all((response.tasks || []).map(async original => {
       const source = this.sources.get(original.id);
-      const browserProgress = source?.resolved ? (String(original.progress || '').match(/\[download\]\s+\d+(?:\.\d+)?%[^\r\n]*/)?.[0] || (original.status === 'running' ? '正在下载目标视频…' : '')) : original.progress;
+      const browserProgress = original.status === 'completed' ? '文件已保存。' : original.progress;
       const task = { ...original, url: source?.url || original.url, progress: safeProgress(browserProgress), error: safeProgress(original.error) || null };
       if (original.status === 'completed') {
         if (!this.verifications.has(original.id)) {

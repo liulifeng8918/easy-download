@@ -21,6 +21,7 @@ class SubtitleMuxTests(unittest.TestCase):
             manager = DownloadManager(root, CookieStore())
 
             def fake_run(command, **kwargs):
+                self.assertTrue(command[-1].endswith('.mp4'), 'FFmpeg must recognize the temporary container')
                 Path(command[-1]).write_bytes(b"muxed")
                 return type("Completed", (), {"returncode": 0, "stdout": "", "stderr": ""})()
 
