@@ -82,7 +82,8 @@ const results=[];
       console.log('using previously authorized site sync; no cookie contents logged');
     }
   }
-  for(const [site,url,quality] of cases){
+  const repeats=Math.max(1,Math.min(3,Number(process.env.EASY_DOWNLOAD_TEST_REPEAT)||1));
+  for(const [site,url,quality] of Array.from({length:repeats},()=>cases).flat()){
     if(process.env.EASY_DOWNLOAD_TEST_SITES&&!process.env.EASY_DOWNLOAD_TEST_SITES.split(',').includes(site))continue;
     const start=Date.now();
     console.log(`START ${site}`);
@@ -93,7 +94,7 @@ const results=[];
       while(Date.now()<end){
         const data=await page.evaluate(()=>window.easyDownload.downloadTasks());
         const current=data.tasks.find(t=>t.id===task.task.id);
-        if(current?.status==='failed')throw new Error(current.error);
+        if(current?.status==='failed')throw new Error([current.error,current.progress].filter(Boolean).join(' | '));
         if(current?.status==='completed'){done=current;break;}
         if(Date.now()-lastUpdate>30000){console.log(`${site} ${current?.status||'pending'} ${current?.progress||''}`);lastUpdate=Date.now();}
         await new Promise(r=>setTimeout(r,1000));

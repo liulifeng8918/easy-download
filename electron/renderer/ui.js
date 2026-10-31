@@ -7,6 +7,7 @@ let registeredDomains = [];
 let currentSearchResults = [];
 let chromeSetupTicket = '';
 let chromeConnected = false;
+let feedbackTaskId = '', feedbackTaskUrl = '';
 
 const request = (route, body) => window.easyDownload.request(route, body === undefined ? {} : { method: 'POST', body: JSON.stringify(body) });
 const pageNames = { home: '首页', tasks: '下载任务', pro: '专业版', settings: '设置' };
@@ -240,6 +241,7 @@ $('downloadForm').onsubmit = async event => {
     feedback('message', '正在识别链接并选择网站处理方式，请稍候…');
     await saveDownloadDefaults({ quality: $('quality').value, format: $('format').value });
     const result = await window.easyDownload.downloadStart({ input, quality: $('quality').value, format: $('quality').value === 'audio' ? 'mp3' : $('format').value, premium: false });
+    feedbackTaskId = result.task?.id || ''; feedbackTaskUrl = '';
     if (result.url && result.url !== input.trim()) $('url').value = result.url;
     feedback('message', result.message || '已加入下载任务。', 'success');
     await refreshTasks();
@@ -507,6 +509,12 @@ async function refreshTasks() {
   try {
     const { tasks } = await window.easyDownload.downloadTasks();
     currentTasks = tasks || [];
+    const feedbackTask = feedbackTaskId ? currentTasks.find(t=>t.id===feedbackTaskId) : feedbackTaskUrl ? currentTasks.slice().reverse().find(t=>t.url===feedbackTaskUrl) : null;
+    if(feedbackTask?.status==='completed'){
+      feedback('message','下载完成，文件已保存。','success'); feedbackTaskId='';feedbackTaskUrl='';
+    }else if(feedbackTask?.status==='failed'){
+      feedback('message',feedbackTask.error||'本次下载未完成。','error');feedbackTaskId='';feedbackTaskUrl='';
+    }else if(feedbackTask?.status==='verifying')feedback('message','文件已下载，正在检查完整音视频…');
     proQueue.forEach(item => {
       const task = currentTasks.find(entry => entry.id === item.taskId || entry.url === item.input || entry.source_url === item.input);
       if (!task) return;
@@ -594,7 +602,11 @@ $('openManualPdf').onclick = () => action('openManualPdf', 'pairingMessage', asy
 $('checkUpdate').onclick = () => action('checkUpdate', 'updateMessage', async () => { feedback('updateMessage', '正在检查更新…'); const { update } = await request('/v1/update/check'); if (!update.available) { feedback('updateMessage', update.configured ? '当前已是最新版本。' : '更新服务暂未就绪，请联系发行方获取新版本。'); return; } feedback('updateMessage', `发现 ${update.manifest.version}，正在下载并校验…`); const result = await request('/v1/update/download', {}); updatePackagePath = result.package.path; $('openUpdate').hidden = false; feedback('updateMessage', '更新包校验完成，可以运行安装。', 'success'); });
 $('openUpdate').onclick = () => action('openUpdate', 'updateMessage', async () => { await window.easyDownload.openUpdate(updatePackagePath); });
 
-window.easyDownload.onDownloadProgress(event => { if (event.message) feedback('message', event.message, event.stage === 'failed' ? 'error' : ''); refreshTasks(); });
+window.easyDownload.onDownloadProgress(event => {
+  if(event.stage==='resolving'||event.stage==='failed'){feedbackTaskId='';feedbackTaskUrl='';}
+  if(event.stage==='submitted'){feedbackTaskId='';feedbackTaskUrl=event.url||'';}
+  if (event.message) feedback('message', event.message, event.stage === 'failed' ? 'error' : ''); refreshTasks();
+});
 window.easyDownload.onBrowserLink(event => {
   const url = String(event?.url || '').trim();
   if (!url) return;

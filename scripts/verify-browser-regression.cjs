@@ -89,6 +89,7 @@ async function wait(predicate, ms=60000) {const end=Date.now()+ms; while(Date.no
     return task?.status==='completed';
   },180000);
   results.push('real extension popup document button -> bridge -> controller -> saved proxy -> frozen engine -> synthetic MP4 completion (not OS toolbar bubble)');
+  await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('下载完成'));
   console.log('PASS extension synthetic download');
   await page.screenshot({path:path.join(evidence,'download-completed.png'),fullPage:true});
   // Douyin feed resolves the current visible player, not the homepage.

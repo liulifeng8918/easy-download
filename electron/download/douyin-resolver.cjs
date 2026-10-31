@@ -22,7 +22,7 @@ function selectDouyinMedia(state, expectedId, quality = 'best') {
       const candidates = state.metadata.formats.filter(f => f.height > 0 && f.height <= limit).sort((a,b) => b.height-a.height || b.bitrate-a.bitrate);
       if (candidates.length) {
         const selected = candidates[0];
-        return {mediaUrl:selected.mediaUrl,sourceUrl:state.pageUrl,videoId:pageId,title:state.metadata.title,duration:video.duration,width:selected.width,height:selected.height,requireAudio:state.metadata.requireAudio};
+        return {mediaUrl:selected.mediaUrl,sourceUrl:state.pageUrl,videoId:pageId,outputId:`${pageId}-${selected.codec||'h264'}-${Math.round(selected.height)}p`,codec:selected.codec||'h264',title:state.metadata.title,duration:video.duration,width:selected.width,height:selected.height,requireAudio:state.metadata.requireAudio};
       }
     }
     let url;
@@ -167,6 +167,7 @@ class DouyinResolver {
           state.networkMedia = observedMedia;
           expectedId ||= pageVideoId(state.pageUrl);
           state.metadata = metadataById.get(pageVideoId(state.pageUrl));
+          if(state.metadata?.incompatible)throw new DownloadError('FORMAT_UNAVAILABLE','网站未提供当前可用的 H.264 兼容格式，暂不能生成可播放的 MP4。此问题不需要重新登录。');
           if(Date.now()-lastDiagnostic>5000){
             lastDiagnostic=Date.now();
             this.diagnostic?.({kind:'player-state',videoId:pageVideoId(state.pageUrl),metadata:Boolean(state.metadata),videos:(state.videos||[]).map(v=>({active:v.active,duration:v.duration,sourceType:String(v.src||'').split(':')[0]})),challenge:state.challenge,loginRequired:state.loginRequired});
@@ -175,6 +176,7 @@ class DouyinResolver {
           if (state.unavailable) throw new DownloadError('VIDEO_UNAVAILABLE', '这个视频已删除、不可见或当前无法播放。');
           const media = selectDouyinMedia(state, expectedId, settings.quality || 'best');
           if (media) {
+            this.diagnostic?.({kind:'media-selected',videoId:media.videoId,codec:media.codec||'browser',width:media.width,height:media.height});
             // Douyin checks the request context for short-lived media URLs.
             // Preserve the page URL and browser UA for the download worker.
             return {

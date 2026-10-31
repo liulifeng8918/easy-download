@@ -1,9 +1,11 @@
 const { DownloadError, parseLinkInput, sitePolicy, validatePublicUrl, domainMatches } = require('./link-input.cjs');
+const { logDouyinDiagnostic } = require('./douyin-metadata.cjs');
 function safeProgress(text) { return String(text || '').replace(/https?:\/\/[^\s]+/gi, '[媒体地址]').slice(-350); }
 class DownloadController {
   constructor({ request, resolveDouyin, resolveYifan, verifyMedia, progress }) {
     Object.assign(this, { request, resolveDouyin, resolveYifan, verifyMedia, progress });
     this.pending = new Map(); this.sources = new Map(); this.keys = new Map(); this.verifications = new Map();
+    this.reportedStates = new Map();
   }
   async licenseGuard() {
     let { license } = await this.request('/v1/license/status');
@@ -70,9 +72,9 @@ class DownloadController {
     const browserProxy = resolved
       ? (resolved.viaProxy && settings.proxy ? { proxy: settings.proxy, autoProxy: false } : { proxy: '', autoProxy: true })
       : { proxy: settings.proxy || '', autoProxy: Boolean(settings.autoProxy) };
-    const result = await this.request('/v1/downloads', { method: 'POST', body: JSON.stringify({ url: mediaUrl, sourceUrl: parsed.url, sourceTitle: resolved?.title, sourceId: resolved?.videoId, referer: resolved?.referer, userAgent: resolved?.userAgent, quality, format, premium, outputDir: settings.outputDir, ...browserProxy }) });
+    const result = await this.request('/v1/downloads', { method: 'POST', body: JSON.stringify({ url: mediaUrl, sourceUrl: parsed.url, sourceTitle: resolved?.title, sourceId: resolved?.outputId || resolved?.videoId, referer: resolved?.referer, userAgent: resolved?.userAgent, quality, format, premium, outputDir: settings.outputDir, ...browserProxy }) });
     if (!result.task?.id) throw new DownloadError('TASK_CREATE_FAILED', '下载任务未创建，请重试。');
-    this.sources.set(result.task.id, { url: parsed.url, resolved, key });
+    this.sources.set(result.task.id, { url: parsed.url, resolved, key, isDouyin:policy.adapter==='douyin-browser' });
     this.keys.set(key, result.task.id);
     return { url: parsed.url, task: { ...result.task, url: parsed.url }, message: resolved ? `已取得目标视频，正在下载${resolved.height ? `（当前可用 ${resolved.height}p）` : ''}。` : '已加入下载任务。' };
   }
@@ -96,6 +98,10 @@ class DownloadController {
         else task.media = { duration: verification.duration, hasAudio: verification.hasAudio, hasVideo: verification.hasVideo };
       }
       if (['completed', 'failed'].includes(task.status) && source) this.keys.delete(source.key);
+      if(source?.isDouyin && this.reportedStates.get(task.id)!==task.status){
+        this.reportedStates.set(task.id,task.status);
+        logDouyinDiagnostic({kind:'download-status',videoId:source.resolved?.videoId,codec:source.resolved?.codec||'browser',status:task.status,error:task.error||undefined,hasAudio:task.media?.hasAudio,hasVideo:task.media?.hasVideo});
+      }
       return task;
     }));
     return { ...response, tasks };
@@ -104,7 +110,7 @@ class DownloadController {
     const response = await this.request('/v1/downloads/clear-history', { method: 'POST', body: '{}' });
     const { tasks } = await this.request('/v1/downloads');
     const liveIds = new Set(tasks.map(task => task.id));
-    for (const [id, source] of this.sources) if (!liveIds.has(id)) { this.keys.delete(source.key); this.sources.delete(id); this.verifications.delete(id); }
+    for (const [id, source] of this.sources) if (!liveIds.has(id)) { this.keys.delete(source.key); this.sources.delete(id); this.verifications.delete(id); this.reportedStates.delete(id); }
     return response;
   }
 }

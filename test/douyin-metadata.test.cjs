@@ -5,7 +5,7 @@ const {extractDouyinMetadata,observeDouyinMetadata}=require('../electron/downloa
 const {selectDouyinMedia}=require('../electron/download/douyin-resolver.cjs');
 const {DouyinResolver}=require('../electron/download/douyin-resolver.cjs');
 const {DownloadError}=require('../electron/download/link-input.cjs');
-function detail(){return {status_code:0,aweme_detail:{aweme_id:'123',desc:'target',video:{format:'dash',duration:193300,play_addr_h264:{height:1080,width:1920,url_list:['https://v1.douyinvod.com/full.mp4']},bit_rate:[{format:'dash',play_addr:{height:1080,url_list:['https://v1.douyinvod.com/media-video-hvc1/']}},{format:'mp4',bit_rate:500,height:576,play_addr:{height:576,width:1024,url_list:['https://v1.douyinvod.com/small.mp4']}}]}}};}
+function detail(){return {status_code:0,aweme_detail:{aweme_id:'123',desc:'target',video:{format:'dash',duration:193300,play_addr_h264:{height:1080,width:1920,url_list:['https://v1.douyinvod.com/full.mp4']},bit_rate:[{format:'dash',play_addr:{height:1080,url_list:['https://v1.douyinvod.com/media-video-hvc1/']}},{format:'mp4',is_h265:0,bit_rate:500,height:576,play_addr:{height:576,width:1024,url_list:['https://v1.douyinvod.com/small.mp4']}}]}}};}
 test('DASH blob player uses only its own complete MP4 alternatives and requested quality',()=>{
  const metadata=extractDouyinMetadata(detail());
  assert.ok(metadata.formats.every(f=>!f.mediaUrl.includes('media-video-')));
@@ -14,6 +14,15 @@ test('DASH blob player uses only its own complete MP4 alternatives and requested
  assert.equal(selectDouyinMedia(state,'123','720').height,576);
  assert.equal(selectDouyinMedia(state,'123').requireAudio,true);
  state.metadata.videoId='999';assert.equal(selectDouyinMedia(state,'123'),null);
+});
+test('MP4 container does not make ByteVC2 a supported codec',()=>{
+ const d=detail();
+ d.aweme_detail.video.bit_rate.unshift({format:'mp4',is_h265:2,is_bytevc1:2,bit_rate:9999999,play_addr:{height:1080,width:1920,url_key:'video_bytevc2_1080p',url_list:['https://v1.douyinvod.com/unsupported.mp4']}});
+ const metadata=extractDouyinMetadata(d);
+ const state={pageUrl:'https://www.douyin.com/video/123',metadata,videos:[{active:true,duration:193.3,src:'blob:https://www.douyin.com/a'}]};
+ assert.notEqual(selectDouyinMedia(state,'123').mediaUrl,'https://v1.douyinvod.com/unsupported.mp4');
+ assert.equal(selectDouyinMedia(state,'123').codec,'h264');
+ assert.match(selectDouyinMedia(state,'123').outputId,/^123-h264-1080p$/);
 });
 test('authorized Chrome state is used only after an explicit website login requirement',async()=>{
  const calls=[];const resolver=new DouyinResolver({loadCookies:async()=>[]});

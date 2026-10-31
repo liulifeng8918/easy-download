@@ -95,6 +95,19 @@ class DownloadHistoryTests(unittest.TestCase):
         self.assertEqual(set(manager._tasks), {"running", "queued"})
         self.assertEqual(manager.clear_completed(), 0)
 
+    def test_existing_explicit_target_is_success_without_changing_the_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            manager = self.make_manager(directory)
+            output = Path(directory, "existing.mp4")
+            output.write_bytes(b"existing media")
+            task = Task("repeat", "https://example.com/video", "best", directory)
+            process = type("ProcessStub", (), {"pid": 1, "stdout": iter([f"__ED_EXPECTED__{output}\n", "[download] has already been downloaded\n"]), "wait": lambda self: 0})()
+            with patch("download_engine.subprocess.Popen", return_value=process):
+                manager._run(task, "", False)
+            self.assertEqual(task.status, "completed")
+            self.assertEqual(task.output_path, str(output.resolve()))
+            self.assertEqual(output.read_bytes(), b"existing media")
+
     def test_organize_outputs_moves_media_into_site_folder(self):
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory, "raw.mp4")

@@ -16,8 +16,10 @@ function extractDouyinMetadata(payload) {
   if (payload?.status_code !== 0 || !/^\d+$/.test(videoId) || !video || video.is_drm || video.isDrm || video.drm_type) return null;
   const formats = [];
   const seen = new Set();
+  let incompatible = false;
   function add(address, bitrate = 0) {
     if (!address || !Array.isArray(address.url_list)) return;
+    if (/bytevc[123]|bvc[123]|h265|hevc|h266|av1/i.test(String(address.url_key || ''))) { incompatible = true; return; }
     for (const raw of address.url_list.slice(0, 4)) {
       try {
         const mediaUrl = validatePublicUrl(String(raw).startsWith('//') ? 'https:' + raw : raw);
@@ -26,17 +28,21 @@ function extractDouyinMetadata(payload) {
         if (url.searchParams.has('__vid') && url.searchParams.get('__vid') !== videoId) continue;
         if (seen.has(mediaUrl)) continue;
         seen.add(mediaUrl);
-        formats.push({ mediaUrl, width: Number(address.width) || 0, height: Number(address.height) || 0, bitrate: Number(bitrate) || 0 });
+        formats.push({ mediaUrl, width: Number(address.width) || 0, height: Number(address.height) || 0, bitrate: Number(bitrate) || 0, codec:'h264' });
       } catch { /* malformed, non-public or unrelated media is not a candidate */ }
     }
   }
   // The observed public detail response offers complete MP4 alternatives even
   // when the active player uses split DASH audio/video and a blob URL.
-  for (const rate of (video.bit_rate || []).slice(0, 40)) if (rate?.format === 'mp4') add(rate.play_addr, rate.bit_rate);
+  for (const rate of (video.bit_rate || []).slice(0, 40)) {
+    if(rate?.format!=='mp4')continue;
+    if([rate.is_h265,rate.is_bytevc1,rate.is_bytevc2].some(v=>Number(v||0)!==0)){incompatible=true;continue;}
+    if(/h264|avc/i.test(String(rate.play_addr?.url_key||'')) || rate.is_h265===0 || rate.is_bytevc1===0) add(rate.play_addr,rate.bit_rate);
+  }
   add(video.play_addr_h264);
-  add(video.play_addr);
-  if (!formats.length) return null;
-  return { videoId, title: String(item.desc || '抖音视频').slice(0, 180), duration: Number(video.duration) / 1000, requireAudio: video.format === 'dash', formats };
+  if(/h264|avc/i.test(String(video.play_addr?.url_key||'')) || video.is_h265===0) add(video.play_addr);
+  if (!formats.length && !incompatible) return null;
+  return { videoId, title: String(item.desc || '抖音视频').slice(0, 180), duration: Number(video.duration) / 1000, requireAudio: video.format === 'dash', incompatible:!formats.length, formats };
 }
 
 async function observeDouyinMetadata(webContents, onMetadata, diagnostic) {

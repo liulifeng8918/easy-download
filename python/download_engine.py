@@ -272,6 +272,8 @@ class DownloadManager:
             command.extend(["--referer", referer])
         if user_agent:
             command.extend(["--user-agent", user_agent])
+        if output_name:
+            command.extend(["--encoding", "utf-8"])
         if use_proxy:
             environment["http_proxy"] = proxy
             environment["https_proxy"] = proxy
@@ -288,7 +290,7 @@ class DownloadManager:
         if preflight:
             command.extend(["--skip-download", "--dump-single-json", url])
         else:
-            command.extend(["--print", "after_move:__ED_OUTPUT__%(filepath)s", "-o", str(Path(output_dir) / (output_name or "%(title).150B [%(id).60B].%(ext)s")), *format_args(quality, output_format), url])
+            command.extend(["--print", "before_dl:__ED_EXPECTED__%(filename)s", "--print", "after_move:__ED_OUTPUT__%(filepath)s", "-o", str(Path(output_dir) / (output_name or "%(title).150B [%(id).60B].%(ext)s")), *format_args(quality, output_format), url])
         return command, environment, use_proxy
 
     def extract_subtitles(self, *, url: str, output_dir: str, proxy: str = "", auto_proxy: bool = True) -> Path:
@@ -430,10 +432,14 @@ class DownloadManager:
                 task.pid = process.pid
             assert process.stdout is not None
             reported_file = None
+            expected_file = None
             for line in process.stdout:
                 message = line.strip()
                 if message.startswith("__ED_OUTPUT__"):
                     reported_file = str(Path(message[len("__ED_OUTPUT__"):]).resolve())
+                    continue
+                if message.startswith("__ED_EXPECTED__"):
+                    expected_file = str(Path(message[len("__ED_EXPECTED__"):]).resolve())
                     continue
                 if message:
                     with self._lock:
@@ -446,17 +452,20 @@ class DownloadManager:
             ]
             with self._lock:
                 own_file = None
-                if reported_file:
+                for explicit_file in (reported_file, expected_file):
+                    if not explicit_file:
+                        continue
                     # yt-dlp's after_move callback is authoritative, but only
                     # accept a real media file inside this task's output dir.
                     # Windows path normalization and Unicode output can make
                     # the callback string differ from the directory snapshot.
-                    candidate = Path(reported_file).resolve()
+                    candidate = Path(explicit_file).resolve()
                     output_root = Path(task.output_dir).resolve()
                     try:
                         candidate.relative_to(output_root)
                         if candidate.is_file() and candidate.stat().st_size > 0 and candidate.suffix.lower() in MEDIA_EXTENSIONS:
                             own_file = str(candidate)
+                            break
                     except (OSError, ValueError):
                         own_file = None
                 if not own_file and len(changed_files) == 1:
