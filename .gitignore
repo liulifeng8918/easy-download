@@ -27,3 +27,13 @@ runtime/*.exe
 .idea/
 Thumbs.db
 Desktop.ini
+
+# Never publish local secrets or generated activation batches.
+.env
+.env.*
+!.env.example
+*.pem
+*.pfx
+*.p12
+*activation-codes*.txt
+*activation-batch*.json

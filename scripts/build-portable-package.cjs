@@ -43,6 +43,19 @@ function main() {
   fs.mkdirSync(staging, { recursive: true });
   fs.cpSync(payload, staging, { recursive: true });
   fs.writeFileSync(path.join(staging, 'resources', 'app', 'portable-mode.flag'), 'portable-user-data-v1\r\n', 'utf8');
+  for (const name of ['LICENSE', 'THIRD_PARTY_NOTICES.md']) {
+    const source = path.join(root, name);
+    if (!fs.existsSync(source)) throw new Error('Missing publication license file: ' + name);
+    fs.copyFileSync(source, path.join(staging, name));
+  }
+  fs.writeFileSync(path.join(staging, 'SOURCE_CODE.txt'), [
+    'Easy Download ' + version + ' - corresponding application source and build scripts',
+    'https://github.com/liulifeng8918/easy-download/tree/v' + version,
+    'Application license: GNU GPL version 3 only (GPL-3.0-only). See LICENSE.',
+    'Third-party source and license links: THIRD_PARTY_NOTICES.md.',
+    'Official free edition: single-video downloads remain free and unlimited; updates and source publication continue.',
+    '',
+  ].join('\r\n'), 'utf8');
 
   fs.writeFileSync(path.join(staging, '启动易下载.cmd'), [
     '@echo off',
