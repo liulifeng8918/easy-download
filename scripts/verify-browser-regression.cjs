@@ -126,6 +126,28 @@ async function wait(predicate, ms=60000) {const end=Date.now()+ms; while(Date.no
     },240000);
     results.push('real Douyin page -> packaged extension popup document -> full actual video download + decode');
   }
+  if(process.env.EASY_DOWNLOAD_LIVE_YIFAN){
+    await page.evaluate(proxy=>window.easyDownload.request('/v1/settings',{method:'POST',body:JSON.stringify({proxy,autoProxy:true})}),process.env.EASY_DOWNLOAD_TEST_PROXY||'');
+    const liveUrl=process.env.EASY_DOWNLOAD_LIVE_YIFAN_URL||'https://www.iyf.tv/play/kNyFnqHa7LB';
+    const {yifanVideoId}=require('../electron/download/yifan-resolver.cjs');
+    const expectedId=yifanVideoId(liveUrl);
+    const real=await browser.newPage();
+    await real.goto(liveUrl,{waitUntil:'domcontentloaded',timeout:60000});
+    const iyfPopup=await browser.newPage();
+    await real.bringToFront();
+    await iyfPopup.goto(`chrome-extension://${extensionId}/popup.html`);
+    await iyfPopup.locator('#direct').click();
+    console.log('SUBMIT real Iyf play page via extension');
+    await wait(async()=>{
+      const value=await page.evaluate(()=>window.easyDownload.downloadTasks());
+      // Normal website verification may append a temporary query parameter.
+      // Compare the validated video identity, not that transient page suffix.
+      const task=value.tasks.find(t=>yifanVideoId(t.url)===expectedId);
+      if(task?.status==='failed')throw new Error(task.error);
+      return task?.status==='completed';
+    },900000);
+    results.push('real Iyf /play page -> packaged extension popup document -> full actual movie download + audio/video validation');
+  }
   // A different portable app credential must not masquerade as connected.
   await worker.evaluate(()=>chrome.storage.local.set({bridgeToken:'stale-test-credential'}));
   const stale=await worker.evaluate(async()=>{try {await submitUrl('https://www.youtube.com/watch?v=test');return 'unexpected';}catch(e){return e.message;}});

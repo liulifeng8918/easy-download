@@ -7,6 +7,7 @@ const path = require('node:path');
 const { DownloadController } = require('./download/controller.cjs');
 const { DouyinResolver } = require('./download/douyin-resolver.cjs');
 const { resolveYifan } = require('./download/yifan-resolver.cjs');
+const { YifanBrowserResolver } = require('./download/yifan-browser.cjs');
 const { verifyMedia, disposeMediaChecks } = require('./download/media-verifier.cjs');
 const { setupPage: renderChromeSetup } = require('./download/chrome-setup.cjs');
 const { sidecarArguments } = require('./download/sidecar-launch.cjs');
@@ -40,6 +41,7 @@ let sidecarExit;
 let mainWindow;
 let downloadController;
 let douyinResolver;
+let yifanBrowserResolver;
 let browserBridge;
 let browserBridgeToken;
 let browserBridgePort;
@@ -117,7 +119,7 @@ async function waitForSidecar() {
     }
     try {
       const health = await sidecarRequest('/health');
-      if (health.engineRevision !== '1.0.2-r1') throw Object.assign(new Error('打包的下载引擎与软件版本不一致，不能继续启动。请获取完整的 1.0.2 版本。'), { code: 'ENGINE_BUILD_MISMATCH' });
+      if (health.engineRevision !== '1.0.2-r1') throw Object.assign(new Error('打包的下载引擎与软件版本不一致，不能继续启动。请获取当前版本的完整绿色包。'), { code: 'ENGINE_BUILD_MISMATCH' });
       return health;
     } catch (error) {
       if (error.code === 'ENGINE_BUILD_MISMATCH') throw error;
@@ -408,6 +410,7 @@ function createWindow() {
     if (mainWindow === window) {
       mainWindow = null;
       douyinResolver?.dispose();
+      yifanBrowserResolver?.dispose();
     }
   });
   return window;
@@ -425,10 +428,11 @@ app.whenReady().then(async () => {
     loadCookies: async () => (await sidecarRequest('/v1/douyin/session-cookies')).cookies,
     progress: (event) => mainWindow?.webContents.send('download-progress', event),
   });
+  yifanBrowserResolver = new YifanBrowserResolver({BrowserWindow, session:require('electron').session, parent:()=>mainWindow, progress:event=>mainWindow?.webContents.send('download-progress',event)});
   downloadController = new DownloadController({
     request: sidecarRequest,
     resolveDouyin: (url, settings) => douyinResolver.resolve(url, settings),
-    resolveYifan,
+    resolveYifan: (url, settings) => resolveYifan(url, settings, {browserResolve:(source, preferences)=>yifanBrowserResolver.resolve(source, preferences)}),
     verifyMedia: (task, expected) => verifyMedia(task, expected, path.join(root, 'bin', 'ffmpeg.exe')),
     progress: (event) => mainWindow?.webContents.send('download-progress', event),
   });

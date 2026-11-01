@@ -12,6 +12,25 @@ test('recognizes public yifan watch pages and extracts video id', () => {
   assert.equal(yifanVideoId('https://www.yifan.tv/watch?v=bad'), null);
 });
 
+test('accepts iyf play pages, keeps the selected episode and rejects lookalike paths', () => {
+  for (const host of ['www.iyf.tv', 'iyf.tv', 'www.yifan.tv']) {
+    assert.equal(isYifanNavigation(`https://${host}/play/kNyFnqHa7LB`), true);
+    assert.equal(yifanVideoId(`https://${host}/play/kNyFnqHa7LB/`), 'kNyFnqHa7LB');
+    assert.equal(yifanVideoId(`https://${host}/play/series123?id=episode456`), 'episode456');
+  }
+  for (const url of ['https://www.iyf.tv/play/', 'https://www.iyf.tv/play/abc/extra', 'https://iyf.tv.evil.example/play/kNyFnqHa7LB']) assert.equal(isYifanNavigation(url), false);
+});
+
+test('play-page IDs use the normal website player, not the legacy preview endpoint', async () => {
+  let seen;
+  const url = 'https://www.iyf.tv/play/kNyFnqHa7LB';
+  const result = await resolveYifan(url, {proxy:'http://127.0.0.1:7892',autoProxy:true}, {
+    browserResolve: async (source, settings) => { seen={source,settings};return {mediaUrl:'https://sss111-e1.pipecdn.vip/main.m3u8',sourceUrl:source,videoId:'kNyFnqHa7LB',duration:7380,requireAudio:true}; },
+    fetchImpl: async () => { throw new Error('must not treat play ID as old watch ID'); },
+  });
+  assert.equal(seen.source,url);assert.equal(seen.settings.autoProxy,true);assert.equal(result.videoId,'kNyFnqHa7LB');
+});
+
 test('parses a master playlist without persisting signed media urls', () => {
   const playlist = '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nhttps://cdn.example.test/stream/chunklist.m3u8?sig=short';
   assert.equal(parseMasterPlaylist(playlist, 'https://upload.yifan.tv/api/video/MasterPlayList?id=x'), 'https://cdn.example.test/stream/chunklist.m3u8?sig=short');

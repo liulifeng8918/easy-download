@@ -1,6 +1,6 @@
 {
   "name": "easy-download",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "private": true,
   "license": "GPL-3.0-only",
   "description": "易下载：本地优先的视频下载工具",

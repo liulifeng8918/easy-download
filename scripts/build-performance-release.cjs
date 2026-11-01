@@ -8,7 +8,7 @@ const quote=s=>"'"+s.replaceAll("'","''")+"'";
 if(fs.existsSync(payload)||fs.existsSync(patch))throw new Error('Preserve existing build directories; use a new build version');
 if(fs.existsSync(path.join(base,'resources','app','user-data')))throw new Error('Base contains user data');
 fs.cpSync(base,payload,{recursive:true});fs.mkdirSync(patch,{recursive:true});fs.mkdirSync(release,{recursive:true});
-const files=['package.json','LICENSE','THIRD_PARTY_NOTICES.md','README.md','electron/main.cjs','electron/preload.cjs','electron/renderer/app.html','electron/renderer/ui.js','electron/renderer/ui.css','electron/renderer/ui-pro.css','runtime/easy_download_sidecar.exe','docs/易下载用户操作手册-1.0.2.pdf','docs/2026-11-01-1.0.2-release.md','docs/2026-11-01-1.0.2-acceptance.md'];
+const files=['package.json','LICENSE','THIRD_PARTY_NOTICES.md','README.md','electron/main.cjs','electron/preload.cjs','electron/renderer/app.html','electron/renderer/ui.js','electron/renderer/ui.css','electron/renderer/ui-pro.css','runtime/easy_download_sidecar.exe','docs/易下载用户操作手册-1.0.2.pdf',`docs/2026-11-01-${version}-release.md`,`docs/2026-11-01-${version}-acceptance.md`];
 for(const dir of ['electron/download','python'])for(const name of fs.readdirSync(path.join(root,dir)))if(/\.(cjs|py)$/.test(name))files.push(dir+'/'+name);
 const manifest={version,baseVersion:'1.0.1',preservesUserData:true,files:[]};
 for(const relative of files){

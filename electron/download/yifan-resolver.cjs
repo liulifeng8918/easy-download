@@ -8,14 +8,15 @@ function isYifanNavigation(raw) {
     const url = new URL(validatePublicUrl(raw));
     const host = url.hostname.toLowerCase();
     return YIFAN_DOMAINS.some(domain => domainMatches(host, domain))
-      && (url.pathname === '/watch' || url.pathname === '/watch/');
+      && (/^\/watch\/?$/.test(url.pathname) || /^\/play\/[A-Za-z0-9_-]{6,160}\/?$/.test(url.pathname) || (/^\/play\/?$/.test(url.pathname) && /^[A-Za-z0-9_-]{6,160}$/.test(url.searchParams.get('id') || '')));
   } catch { return false; }
 }
 
 function yifanVideoId(raw) {
   try {
     const url = new URL(validatePublicUrl(raw));
-    const value = url.searchParams.get('v') || '';
+    if (!isYifanNavigation(raw)) return null;
+    const value = /^\/watch\/?$/.test(url.pathname) ? url.searchParams.get('v') || '' : url.searchParams.get('id') || url.pathname.match(/^\/play\/([A-Za-z0-9_-]+)\/?$/)?.[1] || '';
     return /^[A-Za-z0-9_-]{6,160}$/.test(value) ? value : null;
   } catch { return null; }
 }
@@ -29,7 +30,11 @@ function parseMasterPlaylist(body, baseUrl) {
   if (typeof body !== 'string' || !body.trimStart().startsWith('#EXTM3U')) {
     throw new DownloadError('YIFAN_PLAYLIST_INVALID', '网站没有返回可下载的视频播放列表。');
   }
-  const protectedKey = body.split(/\r?\n/).find(line => /#EXT-X-KEY:/i.test(line) && (/METHOD=SAMPLE-AES/i.test(line) || /KEYFORMAT\s*=\s*"?(?!identity\b)/i.test(line)));
+  const protectedKey = body.split(/\r?\n/).find(line => {
+    if (!/#EXT-X-(?:SESSION-)?KEY:/i.test(line)) return false;
+    const format = line.match(/KEYFORMAT\s*=\s*(?:"([^"]*)"|([^,\s]+))/i);
+    return /METHOD=SAMPLE-AES/i.test(line) || !!(format && (format[1] ?? format[2]).toLowerCase() !== 'identity');
+  });
   if (protectedKey) throw new DownloadError('DRM_PROTECTED', '这个爱壹帆视频使用加密保护，易下载不提供下载。');
   const candidates = [];
   for (const rawLine of body.split(/\r?\n/)) {
@@ -41,6 +46,9 @@ function parseMasterPlaylist(body, baseUrl) {
     candidates.push(url.href);
   }
   if (!candidates.length) throw new DownloadError('YIFAN_PLAYLIST_EMPTY', '这个视频当前没有可用的播放流。');
+  // A media playlist must be handed to the engine intact, not reduced to its
+  // first .ts segment (which would silently truncate a long video).
+  if (/^#EXTINF:/m.test(body)) return validatePublicUrl(baseUrl);
   return candidates[0];
 }
 
@@ -78,6 +86,12 @@ async function resolveYifan(raw, _settings = {}, options = {}) {
   if (!isYifanNavigation(sourceUrl)) throw new DownloadError('INVALID_URL', '请复制爱壹帆具体的视频播放页地址。');
   const videoId = yifanVideoId(sourceUrl);
   if (!videoId) throw new DownloadError('INVALID_URL', '没有识别到爱壹帆视频编号，请重新复制播放页地址。');
+  if (new URL(sourceUrl).pathname.startsWith('/play')) {
+    if (typeof options.browserResolve !== 'function') throw new DownloadError('YIFAN_PLAYER_MISSING', '这类爱壹帆播放页需要新版播放器适配组件，请更新易下载。无需重新连接 Chrome。');
+    const resolved = await options.browserResolve(sourceUrl, _settings);
+    validatePublicUrl(resolved.mediaUrl);
+    return resolved;
+  }
   const apiUrl = `https://${yifanUploadHost(sourceUrl)}/api/video/MasterPlayList?id=${encodeURIComponent(videoId)}`;
   const playlist = await fetchText(apiUrl, { referer: sourceUrl, fetchImpl: options.fetchImpl });
   const mediaUrl = parseMasterPlaylist(playlist, apiUrl);
