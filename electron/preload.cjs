@@ -16,6 +16,9 @@ contextBridge.exposeInMainWorld('easyDownload', {
   clearDownloadHistory() {
     return ipcRenderer.invoke('download-clear-history');
   },
+  deepVerify(id) { return ipcRenderer.invoke('download-deep-verify', id); },
+  openChromeExtensions() { return ipcRenderer.invoke('open-chrome-extensions'); },
+  copyExtensionPath() { return ipcRenderer.invoke('copy-extension-path'); },
   onDownloadProgress(callback) {
     const listener = (_event, payload) => callback(payload);
     ipcRenderer.on('download-progress', listener);

@@ -13,7 +13,7 @@ from reportlab.lib.utils import ImageReader
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "docs" / "易下载用户操作手册.pdf"
+OUT = ROOT / "docs" / "易下载用户操作手册-1.0.2.pdf"
 ASSET = ROOT / "electron" / "renderer" / "assets" / "browser-download-hero.png"
 HOME = ROOT / "output" / "playwright" / "home.png"
 SETTINGS = ROOT / "output" / "playwright" / "settings.png"
@@ -88,7 +88,7 @@ def footer(c: canvas.Canvas, page: int):
     c.line(38, 31, PAGE_W - 38, 31)
     c.setFont(FONT, 8)
     c.setFillColor(MUTED)
-    c.drawString(38, 18, "易下载 1.0.0  |  本手册面向 Windows 用户")
+    c.drawString(38, 18, "易下载 1.0.2  |  本手册面向 Windows 用户")
     c.drawRightString(PAGE_W - 38, 18, f"{page}")
 
 
@@ -213,8 +213,8 @@ def make_pdf():
     c.setFont(FONT, 9)
     c.setFillColor(MUTED)
     c.drawString(42, 386, "设置页中的连接区域：点击“连接 Chrome”后，程序会自动打开需要的窗口。")
-    step_card(c, "1", "点击连接 Chrome", "在易下载设置页点击“连接 Chrome”。程序会同时打开 Chrome 扩展页、连接向导和 extension 文件夹。", 38, 264, 250, 100)
-    step_card(c, "2", "加载已解压扩展", "在 Chrome 扩展页点击“加载已解压的扩展程序”，选择程序自动打开的 extension 文件夹。", 307, 264, 250, 100)
+    step_card(c, "1", "打开扩展管理页", "在设置页点击“连接 Chrome”。程序自动打开扩展管理页和图文向导。先打开右上角“开发者模式”。", 38, 264, 250, 100)
+    step_card(c, "2", "复制路径并加载扩展", "点击“加载已解压的扩展程序”。复制向导中的路径，在选择窗口按 Ctrl+L、Ctrl+V、回车，点击选择文件夹。", 307, 264, 250, 100)
     step_card(c, "3", "等待自动连接", "扩展加载后会读取一次性连接票据，自动保存桥接凭据，不需要复制或粘贴连接码。", 38, 147, 250, 100)
     step_card(c, "4", "回到易下载重试", "连接完成后回到易下载，已发现的平台会自动同步登录状态，再次点击失败任务的“重试”。", 307, 147, 250, 100)
     footer(c, 4)
@@ -225,12 +225,12 @@ def make_pdf():
     c.setFillColor(BLUE_DARK)
     c.setFont(FONT, 12)
     c.drawString(38, PAGE_H - 110, "五张截图对应五个动作")
-    image_step(c, "1", "打开 Chrome 扩展入口", "点击右上角菜单，再进入“扩展程序”。", CHROME_MENU, 38, 540, 250, 166)
-    image_step(c, "2", "点击加载未打包扩展程序", "在扩展页面点击左上角按钮。", CHROME_EXTENSIONS, 307, 540, 250, 166)
+    image_step(c, "1", "找不到入口时看这里", "软件可直接打开；也可点右上角菜单进入扩展程序。", CHROME_MENU, 38, 540, 250, 166)
+    image_step(c, "2", "开启开发者模式并加载", "先开右上角开发者模式，再点左上角加载按钮。", CHROME_EXTENSIONS, 307, 540, 250, 166)
     image_step(c, "3", "选择 extension 文件夹", "在文件夹选择窗口粘贴路径并确认选择。", CHROME_FOLDER, 38, 350, 250, 166)
     image_step(c, "4", "等待连接向导完成", "看到易下载连接向导后，等待状态变为已连接。", CHROME_WIZARD, 307, 350, 250, 166)
     image_step(c, "5", "网页右键下载视频", "安装成功后，在视频页面右键选择“下载此视频”。", CHROME_CONTEXT, 38, 160, 250, 166)
-    step_card(c, "✓", "回到易下载", "连接成功后关闭连接向导，回到易下载重试需要登录的视频。", 307, 160, 250, 166, fill=SUCCESS)
+    step_card(c, "OK", "回到易下载", "连接成功后关闭连接向导，回到易下载重试需要登录的视频。", 307, 160, 250, 166, fill=SUCCESS)
     footer(c, 5)
     c.showPage()
 
@@ -240,7 +240,7 @@ def make_pdf():
     c.setFont(FONT, 15)
     c.drawString(38, PAGE_H - 112, "Chrome 操作路径")
     step_card(c, "A", "打开 Chrome 扩展页", "程序已经自动打开 chrome://extensions；如果没有打开，也可以在地址栏输入它。", 38, 535, 250, 92, fill=BLUE_SOFT)
-    step_card(c, "B", "加载已解压扩展", "点击“加载已解压的扩展程序”，选择易下载自动打开的 extension 文件夹。", 307, 535, 250, 92, fill=BLUE_SOFT)
+    step_card(c, "B", "复制路径并选择文件夹", "开启开发者模式，点击加载按钮。复制向导路径，在选择窗口按 Ctrl+L、Ctrl+V、回车，再确认。", 307, 535, 250, 92, fill=BLUE_SOFT)
     step_card(c, "C", "等待连接向导变绿", "连接向导页面会自动显示“已连接”。如果没有变化，回到易下载重新点击“连接 Chrome”。", 38, 420, 250, 92, fill=BLUE_SOFT)
     step_card(c, "D", "不需要打开扩展设置", "新版流程不要求复制连接码或填写网站列表；手动设置只在高级排错时使用。", 307, 420, 250, 92, fill=BLUE_SOFT)
     step_card(c, "E", "自动同步已登记平台", "扩展会发现已登记平台的登录状态，易下载只保存必要的本机加密登录数据。", 38, 305, 250, 92, fill=SUCCESS)
@@ -258,7 +258,7 @@ def make_pdf():
     c.setFillColor(BLUE_DARK)
     c.setFont(FONT, 15)
     c.drawString(38, PAGE_H - 112, "下载完成后")
-    step_card(c, "1", "看任务状态", "首页底部和“下载任务”页都会显示任务状态。完成项会显示“打开文件夹”。", 38, 565, 250, 92)
+    step_card(c, "1", "看任务状态", "任务会显示速度、剩余时间和线路。完成前默认快速检查首尾声画；不再逐帧等待整个视频。", 38, 565, 250, 92)
     step_card(c, "2", "打开文件位置", "点击“打开文件夹”，系统会直接打开本次任务的保存目录。", 307, 565, 250, 92)
     step_card(c, "3", "清空记录", "“清空记录”只清除软件里的任务记录，不会删除已经下载到磁盘的视频。", 38, 450, 250, 92)
     step_card(c, "4", "专业版整理", "专业版可以进入“整理输出”，统一命名、分类、保存字幕和封装独立字幕轨道。", 307, 450, 250, 92)

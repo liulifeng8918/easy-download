@@ -11,6 +11,7 @@ const cases=[
   ['Weibo','https://m.weibo.cn/detail/4189191225395228','best'],
   ['Yifan-long','https://www.yifan.tv/watch?v=HIVJn4VQvwrHXVmL0LMq51','best'],
 ];
+if(process.env.EASY_DOWNLOAD_EXTRA_URL)cases.push(['Custom',process.env.EASY_DOWNLOAD_EXTRA_URL,'best']);
 let app;
 const results=[];
 (async()=>{
@@ -89,18 +90,20 @@ const results=[];
     console.log(`START ${site}`);
     try{
       const task=await page.evaluate(p=>window.easyDownload.downloadStart(p),{input:url,quality});
+      const acceptedAt=Date.now();let checkingAt;
       const end=Date.now()+(site==='Yifan-long'?900000:240000);
       let done,lastUpdate=0;
       while(Date.now()<end){
         const data=await page.evaluate(()=>window.easyDownload.downloadTasks());
         const current=data.tasks.find(t=>t.id===task.task.id);
+        if(current?.status==='verifying')checkingAt ||= Date.now();
         if(current?.status==='failed')throw new Error([current.error,current.progress].filter(Boolean).join(' | '));
         if(current?.status==='completed'){done=current;break;}
         if(Date.now()-lastUpdate>30000){console.log(`${site} ${current?.status||'pending'} ${current?.progress||''}`);lastUpdate=Date.now();}
         await new Promise(r=>setTimeout(r,1000));
       }
       if(!done)throw new Error('bounded test timeout; no claim of completion');
-      results.push({site,ok:true,seconds:Math.round((Date.now()-start)/1000),duration:done.media?.duration,hasVideo:done.media?.hasVideo,hasAudio:done.media?.hasAudio,bytes:fs.statSync(done.output_path).size,output:done.output_path});
+      results.push({site,ok:true,seconds:Math.round((Date.now()-start)/1000),resolveSeconds:(acceptedAt-start)/1000,engineSeconds:((checkingAt||Date.now())-acceptedAt)/1000,checkSeconds:checkingAt?(Date.now()-checkingAt)/1000:null,route:done.route,fragments:done.fragment_concurrency,totalBytes:done.total_bytes,duration:done.media?.duration,hasVideo:done.media?.hasVideo,hasAudio:done.media?.hasAudio,bytes:fs.statSync(done.output_path).size,output:done.output_path});
     }catch(e){results.push({site,ok:false,seconds:Math.round((Date.now()-start)/1000),error:String(e.message).replace(/https?:\/\/\S+/g,'[url]')});}
     console.log(JSON.stringify(results.at(-1)));
     fs.mkdirSync(path.join(root,'output','platform-regression'),{recursive:true});

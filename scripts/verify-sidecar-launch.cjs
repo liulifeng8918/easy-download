@@ -13,7 +13,7 @@ const child=spawn(path.join(appRoot,'runtime','easy_download_sidecar.exe'),sidec
     try{
       const r=await fetch('http://127.0.0.1:29893/health',{headers:{'X-Easy-Download-Session':token}});
       const health=await r.json();
-      assert.equal(r.status,200);assert.equal(health.engineRevision,'1.0.1-r1');
+      assert.equal(r.status,200);assert.equal(health.engineRevision,'1.0.2-r1');
       console.log('PASS frozen sidecar starts and authenticates with a dash-prefixed credential');
       return;
     }catch{}

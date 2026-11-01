@@ -86,12 +86,18 @@ async function wait(predicate, ms=60000) {const end=Date.now()+ms; while(Date.no
     const value=await page.evaluate(()=>window.easyDownload.downloadTasks());
     const task=value.tasks.find(t=>t.url.includes('media.ed-fixture.test'));
     if(task?.status==='failed')throw new Error(task.error);
+    if(task?.status==='completed')assert.ok(task.total_bytes>0,'structured engine progress must be present');
     return task?.status==='completed';
   },180000);
   results.push('real extension popup document button -> bridge -> controller -> saved proxy -> frozen engine -> synthetic MP4 completion (not OS toolbar bubble)');
   await page.waitForFunction(()=>document.querySelector('#message')?.textContent.includes('下载完成'));
   console.log('PASS extension synthetic download');
   await page.screenshot({path:path.join(evidence,'download-completed.png'),fullPage:true});
+  await page.locator('#tasksNav').click();
+  await page.getByRole('button',{name:'深度检查',exact:true}).click();
+  await wait(async()=>{const value=await page.evaluate(()=>window.easyDownload.downloadTasks());return value.tasks.some(task=>task.deepCheck?.status==='completed'&&task.status==='completed');});
+  results.push('completed task manual deep-check button -> IPC -> complete decode without changing saved file');
+  await page.locator('#home').click();
   // Douyin feed resolves the current visible player, not the homepage.
   const dy=await browser.newPage();
   await dy.route('https://www.douyin.com/**',route=>route.fulfill({contentType:'text/html',body:'<div data-e2e="feed-active-video" class="video_7701612994102316328"><video></video></div>'}));

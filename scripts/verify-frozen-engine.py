@@ -20,6 +20,8 @@ def constants(value):
 engine = set(constants(pyz.extract('download_engine')))
 assert {'--progress', '--concurrent-fragments', '--abort-on-unavailable-fragments'} <= engine, 'Frozen HLS/progress logic is stale'
 assert {'--encoding','before_dl:__ED_EXPECTED__%(filename)s'} <= engine, 'Frozen existing-file/encoding logic is stale'
+assert {'--http-chunk-size', '--load-info-json', '--progress-template'} <= engine, 'Frozen performance/cache logic is stale'
+assert pyz.extract('download_resources'), 'Frozen shared resource budget is missing'
 cookies = pyz.extract('cookie_store')
 def code_names(code):
     yield code.co_name

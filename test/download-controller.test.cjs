@@ -151,3 +151,14 @@ test('P2 unsupported cases do not send an unsafe default engine request', async 
     assert.equal(calls.some(([route]) => route === '/v1/links/check'), false);
   }
 });
+test('manual deep inspection is asynchronous and does not block completed downloads', async () => {
+  let finish;
+  const { controller } = setup({verifyMedia: (_task, expected) => expected.mode === 'deep' ? new Promise(resolve => {finish=resolve;}) : Promise.resolve({ok:true})});
+  await controller.start({input:'https://www.youtube.com/watch?v=x'});
+  await controller.deepVerify('one');
+  const first=await controller.listTasks();
+  assert.equal(first.tasks[0].deepCheck.status,'running');
+  finish({ok:true});await new Promise(resolve=>setImmediate(resolve));
+  assert.equal((await controller.listTasks()).tasks[0].deepCheck.status,'completed');
+  await assert.rejects(controller.deepVerify('missing'),/完成下载/);
+});

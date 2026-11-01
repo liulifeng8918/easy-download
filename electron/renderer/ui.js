@@ -150,7 +150,7 @@ async function loadState() {
       chromeConnected = true;
       setChromeConnectionVisual('已连接', 'Chrome 下载入口已验证', '网站登录状态在每次浏览器下载前按已授权范围同步。');
     } else if (!chromeConnected) {
-      setChromeConnectionVisual('尚未连接', '需要登录时，点击下面按钮', '易下载会打开 Chrome、扩展文件夹和连接向导，扩展加载后自动完成连接。');
+      setChromeConnectionVisual('尚未连接', '需要登录时，点击下面按钮', '直接打开 Chrome 扩展管理页；按下方图示开启开发者模式、加载扩展，之后自动连接。');
     }
     applyLicense(state.license);
     const translation = await request('/v1/translation/settings');
@@ -442,15 +442,24 @@ function renderOutputTasks() {
 function taskTitle(task) { return task.source_title || task.title || task.url || '未命名视频'; }
 function taskDomain(url) { try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return '—'; } }
 function taskProgress(task) {
+  if (task.status === 'completed') return 100;
+  if (Number.isFinite(task.percent) && task.total_bytes > 0) return Math.round(task.percent);
   const match = String(task.progress || '').match(/(\d+(?:\.\d+)?)%/);
   if (match) return Math.max(0, Math.min(100, Number(match[1])));
   return task.status === 'completed' ? 100 : 0;
 }
 function taskDetail(task) {
   if (task.error) return task.error;
-  if (task.status === 'completed') { const filename = String(task.output_path || '').split(/[\\/]/).pop(); return filename ? `已保存：${filename}` : '下载完成，文件已保存。'; }
-  if (task.status === 'verifying') return task.progress || '正在检查完整视频与音频…';
-  if (task.status === 'queued') return '已加入队列，准备下载…';
+  if (task.status === 'completed') { const filename = String(task.output_path || '').split(/[\\/]/).pop(); return [filename ? `已保存：${filename}` : '下载完成，文件已保存。', task.deepCheck?.message || '快速检查通过（首尾声画，不等同逐帧检查）'].join(' · '); }
+  if (task.status === 'verifying') return task.progress || '正在快速检查声画与首尾片段…';
+  if (task.status === 'queued') return '等待可用下载资源，正在排队…';
+  if (task.stage === 'downloading') {
+    const speed = task.speed_bytes > 0 ? task.speed_bytes >= 1048576 ? `${(task.speed_bytes / 1048576).toFixed(2)} MB/s` : `${Math.round(task.speed_bytes / 1024)} KB/s` : '正在测算速度';
+    const eta = task.eta_seconds > 0 ? `剩余约 ${Math.ceil(task.eta_seconds / 60)} 分钟` : '剩余时间计算中';
+    return `${speed} · ${eta} · ${task.route === 'proxy' ? '代理线路' : '直接连接'} · 分片并发上限 ${task.fragment_concurrency || 1}`;
+  }
+  if (task.stage === 'merging') return '传输完成，正在合并音视频…';
+  if (task.stage === 'resolving') return `正在解析视频信息… · ${task.route === 'proxy' ? '代理线路' : '直接连接'}`;
   return task.progress || '正在处理…';
 }
 function renderCompactTasks(tasks) {
@@ -482,7 +491,7 @@ function renderTaskTable(tasks) {
     const progress = document.createElement('div'); progress.className = 'progress-wrap'; const bar = document.createElement('span'); bar.className = 'progress-bar'; const fill = document.createElement('i'); fill.style.width = `${taskProgress(task)}%`; bar.append(fill); const percent = document.createElement('small'); percent.textContent = `${taskProgress(task)}%`; progress.append(bar, percent);
     const operation = document.createElement('div');
     if (task.status === 'failed') { const retry = document.createElement('button'); retry.textContent = '重试'; retry.onclick = () => retryTask(task); operation.append(retry); }
-    else if (task.status === 'completed') { const open = document.createElement('button'); open.textContent = '打开文件夹'; open.onclick = () => window.easyDownload.openFolder(task.output_dir || $('outputDir').value).catch(error => feedback('globalSettingsMessage', errorText(error), 'error')); operation.append(open); }
+    else if (task.status === 'completed') { const open = document.createElement('button'); open.textContent = '打开文件夹'; open.onclick = () => window.easyDownload.openFolder(task.output_dir || $('outputDir').value).catch(error => feedback('globalSettingsMessage', errorText(error), 'error')); operation.append(open); const deep = document.createElement('button'); deep.textContent = task.deepCheck?.status === 'running' ? '检查中…' : '深度检查'; deep.disabled = task.deepCheck?.status === 'running'; deep.title = '逐帧检查整个文件，可能耗时数分钟；不会修改视频'; deep.onclick = () => window.easyDownload.deepVerify(task.id).then(refreshTasks).catch(error => feedback('globalSettingsMessage', errorText(error), 'error')); operation.append(deep); }
     else { const pause = document.createElement('button'); pause.textContent = '暂停'; pause.disabled = true; operation.append(pause); }
     row.append(title, domain, status, progress, operation);
     const detail = document.createElement('small'); detail.className = 'detail'; detail.textContent = taskDetail(task); row.append(detail);
@@ -514,7 +523,7 @@ async function refreshTasks() {
       feedback('message','下载完成，文件已保存。','success'); feedbackTaskId='';feedbackTaskUrl='';
     }else if(feedbackTask?.status==='failed'){
       feedback('message',feedbackTask.error||'本次下载未完成。','error');feedbackTaskId='';feedbackTaskUrl='';
-    }else if(feedbackTask?.status==='verifying')feedback('message','文件已下载，正在检查完整音视频…');
+    }else if(feedbackTask?.status==='verifying')feedback('message','文件已下载，正在快速检查声画与首尾片段…');
     proQueue.forEach(item => {
       const task = currentTasks.find(entry => entry.id === item.taskId || entry.url === item.input || entry.source_url === item.input);
       if (!task) return;
@@ -576,14 +585,14 @@ async function startChromeConnection(actionId = 'connectChrome') {
   const result = await window.easyDownload.connectChrome();
   chromeSetupTicket = result.ticket;
   chromeConnected = false;
-  setChromeConnectionVisual('等待连接', '请在 Chrome 中加载已解压扩展', '易下载已打开扩展页、连接向导和扩展文件夹；加载完成后会自动连接。');
-  feedback('pairingMessage', result.chromeFound ? '已打开 Chrome 和扩展文件夹，请按连接向导操作。' : '没有找到 Chrome，已打开连接向导，请手动打开 Chrome 后继续。');
+  setChromeConnectionVisual('等待连接', '按图开启开发者模式并加载扩展', '扩展管理页会自动打开。首次加载后自动连接，不用填写连接码。');
+  feedback('pairingMessage', result.chromeFound ? '已打开 Chrome 图文向导和扩展管理页，请按下方三步操作。' : '没有找到 Chrome，已打开连接向导，请手动打开 Chrome 后继续。');
   void monitorChromePairing(result.ticket);
   });
 }
 $('connectChrome').onclick = () => startChromeConnection();
 if ($('connectChrome')) {
-  document.querySelector('.chrome-guide')?.setAttribute('hidden', 'hidden');
+  document.querySelector('.chrome-guide')?.removeAttribute('hidden');
   const manualButton = $('openManualPdf');
   const advancedConnection = document.querySelector('.browser-connect-section .advanced-settings');
   if (manualButton && advancedConnection) advancedConnection.append(manualButton);
@@ -598,6 +607,8 @@ if ($('connectChrome')) {
 }
 $('copyPairing').onclick = () => action('copyPairing', 'pairingMessage', async () => { const data = await request('/v1/pairing'); await navigator.clipboard.writeText(data.bridgeToken); feedback('pairingMessage', '连接码已复制，请粘贴到浏览器扩展设置页。', 'success'); });
 $('openExtension').onclick = () => action('openExtension', 'pairingMessage', async () => { await window.easyDownload.openExtension(); feedback('pairingMessage', '扩展文件夹已打开，请在 Chrome 中选择“加载已解压的扩展程序”。'); });
+if ($('openChromeManagement')) $('openChromeManagement').onclick = () => action('openChromeManagement', 'pairingMessage', async () => { await window.easyDownload.openChromeExtensions(); feedback('pairingMessage', '扩展管理页已打开：开启右上角开发者模式，再点击左上角加载已解压的扩展程序。'); });
+if ($('copyExtensionPath')) $('copyExtensionPath').onclick = () => action('copyExtensionPath', 'pairingMessage', async () => { await window.easyDownload.copyExtensionPath(); feedback('pairingMessage', '文件夹路径已复制。在选择窗口按 Ctrl + L、Ctrl + V、回车，再点击选择文件夹。', 'success'); });
 $('openManualPdf').onclick = () => action('openManualPdf', 'pairingMessage', async () => { await window.easyDownload.openManual(); feedback('pairingMessage', '已打开 PDF 用户手册。', 'success'); });
 $('checkUpdate').onclick = () => action('checkUpdate', 'updateMessage', async () => { feedback('updateMessage', '正在检查更新…'); const { update } = await request('/v1/update/check'); if (!update.available) { feedback('updateMessage', update.configured ? '当前已是最新版本。' : '更新服务暂未就绪，请联系发行方获取新版本。'); return; } feedback('updateMessage', `发现 ${update.manifest.version}，正在下载并校验…`); const result = await request('/v1/update/download', {}); updatePackagePath = result.package.path; $('openUpdate').hidden = false; feedback('updateMessage', '更新包校验完成，可以运行安装。', 'success'); });
 $('openUpdate').onclick = () => action('openUpdate', 'updateMessage', async () => { await window.easyDownload.openUpdate(updatePackagePath); });

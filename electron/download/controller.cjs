@@ -6,6 +6,7 @@ class DownloadController {
     Object.assign(this, { request, resolveDouyin, resolveYifan, verifyMedia, progress });
     this.pending = new Map(); this.sources = new Map(); this.keys = new Map(); this.verifications = new Map();
     this.reportedStates = new Map();
+    this.deepChecks = new Map();
   }
   async licenseGuard() {
     let { license } = await this.request('/v1/license/status');
@@ -41,7 +42,7 @@ class DownloadController {
     const policy = sitePolicy(parsed.url);
     if (policy.adapter === 'unsupported') throw new DownloadError('SITE_NOT_READY', policy.name === 'Netflix' ? '这个平台的正片不在易下载支持范围内，请使用网站官方离线观看功能。' : `${policy.name}的当前路线还未完成适配验证，暂不能下载；添加域名或反复登录不会解决。`);
     this.progress?.({ url: parsed.url, stage: 'resolving', message: `${parsed.extracted ? '已识别分享链接。' : ''}正在解析${policy.name}视频…` });
-    let resolved, mediaUrl = parsed.url;
+    let resolved, resolutionToken, mediaUrl = parsed.url;
     if (policy.adapter === 'douyin-browser') {
       resolved = await this.resolveDouyin(parsed.url, {...settings, quality});
       mediaUrl = validatePublicUrl(resolved.mediaUrl);
@@ -65,6 +66,7 @@ class DownloadController {
               : check?.message || '这个视频暂时无法解析。';
         throw new DownloadError(check?.code || 'RESOLVE_FAILED', message);
       }
+      resolutionToken = check.resolutionToken;
     }
     // The existing backend re-checks the real license before creating any task.
     // Generic sites must retain the saved network policy used by preflight.
@@ -72,7 +74,7 @@ class DownloadController {
     const browserProxy = resolved
       ? (resolved.viaProxy && settings.proxy ? { proxy: settings.proxy, autoProxy: false } : { proxy: '', autoProxy: true })
       : { proxy: settings.proxy || '', autoProxy: Boolean(settings.autoProxy) };
-    const result = await this.request('/v1/downloads', { method: 'POST', body: JSON.stringify({ url: mediaUrl, sourceUrl: parsed.url, sourceTitle: resolved?.title, sourceId: resolved?.outputId || resolved?.videoId, referer: resolved?.referer, userAgent: resolved?.userAgent, quality, format, premium, outputDir: settings.outputDir, ...browserProxy }) });
+    const result = await this.request('/v1/downloads', { method: 'POST', body: JSON.stringify({ url: mediaUrl, sourceUrl: parsed.url, sourceTitle: resolved?.title, sourceId: resolved?.outputId || resolved?.videoId, referer: resolved?.referer, userAgent: resolved?.userAgent, quality, format, premium, outputDir: settings.outputDir, resolutionToken, ...browserProxy }) });
     if (!result.task?.id) throw new DownloadError('TASK_CREATE_FAILED', '下载任务未创建，请重试。');
     this.sources.set(result.task.id, { url: parsed.url, resolved, key, isDouyin:policy.adapter==='douyin-browser' });
     this.keys.set(key, result.task.id);
@@ -93,10 +95,11 @@ class DownloadController {
             .then(result => { job.result = result; });
         }
         const verification = this.verifications.get(original.id).result;
-        if (!verification) { task.status = 'verifying'; task.progress = '文件已下载，正在检查完整视频与音频…'; }
+        if (!verification) { task.status = 'verifying'; task.progress = '文件已下载，正在快速检查声画与首尾片段…'; }
         else if (!verification.ok) { task.status = 'failed'; task.error = verification.message; }
-        else task.media = { duration: verification.duration, hasAudio: verification.hasAudio, hasVideo: verification.hasVideo };
+        else task.media = { duration: verification.duration, hasAudio: verification.hasAudio, hasVideo: verification.hasVideo, mode: verification.mode || 'quick' };
       }
+      if (this.deepChecks.has(task.id)) task.deepCheck = this.deepChecks.get(task.id);
       if (['completed', 'failed'].includes(task.status) && source) this.keys.delete(source.key);
       if(source?.isDouyin && this.reportedStates.get(task.id)!==task.status){
         this.reportedStates.set(task.id,task.status);
@@ -106,11 +109,22 @@ class DownloadController {
     }));
     return { ...response, tasks };
   }
+  async deepVerify(id) {
+    const { tasks } = await this.request('/v1/downloads');
+    const task = tasks.find(value => value.id === id);
+    if (!task?.output_path || task.status !== 'completed') throw new DownloadError('NO_COMPLETED_FILE', '请先完成下载，再检查文件。');
+    if (this.deepChecks.get(id)?.status === 'running') return { ok: true };
+    this.deepChecks.set(id, { status: 'running', message: '正在逐帧深度检查，可继续使用软件…' });
+    Promise.resolve().then(() => this.verifyMedia(task, { ...this.sources.get(id)?.resolved, mode: 'deep' }))
+      .catch(() => ({ ok: false, message: '深度检查未完成，下载文件仍保留。' }))
+      .then(result => { if (this.deepChecks.has(id)) this.deepChecks.set(id, { status: result.ok ? 'completed' : 'failed', message: result.ok ? '深度检查通过。' : '深度检查未通过：' + result.message }); });
+    return { ok: true };
+  }
   async clearHistory() {
     const response = await this.request('/v1/downloads/clear-history', { method: 'POST', body: '{}' });
     const { tasks } = await this.request('/v1/downloads');
     const liveIds = new Set(tasks.map(task => task.id));
-    for (const [id, source] of this.sources) if (!liveIds.has(id)) { this.keys.delete(source.key); this.sources.delete(id); this.verifications.delete(id); this.reportedStates.delete(id); }
+    for (const [id, source] of this.sources) if (!liveIds.has(id)) { this.keys.delete(source.key); this.sources.delete(id); this.verifications.delete(id); this.reportedStates.delete(id); this.deepChecks.delete(id); }
     return response;
   }
 }

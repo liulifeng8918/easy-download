@@ -76,6 +76,7 @@ class DownloadHistoryTests(unittest.TestCase):
                 output_dir=directory,
                 proxy="",
                 auto_proxy=True,
+                resources={"fragments": 4, "chunk_mib": 4},
             )
             self.assertEqual(command[command.index("--concurrent-fragments") + 1], "4")
             self.assertEqual(command[command.index("--fragment-retries") + 1], "3")

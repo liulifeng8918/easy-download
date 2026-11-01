@@ -1,13 +1,14 @@
-const { app, BrowserWindow, dialog, ipcMain, shell, Menu } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, shell, Menu, clipboard } = require('electron');
 const { spawn, spawnSync } = require('node:child_process');
 const { randomBytes } = require('node:crypto');
 const { createServer } = require('node:http');
-const { appendFileSync, existsSync } = require('node:fs');
+const { appendFileSync, existsSync, readFileSync } = require('node:fs');
 const path = require('node:path');
 const { DownloadController } = require('./download/controller.cjs');
 const { DouyinResolver } = require('./download/douyin-resolver.cjs');
 const { resolveYifan } = require('./download/yifan-resolver.cjs');
-const { verifyMedia } = require('./download/media-verifier.cjs');
+const { verifyMedia, disposeMediaChecks } = require('./download/media-verifier.cjs');
+const { setupPage: renderChromeSetup } = require('./download/chrome-setup.cjs');
 const { sidecarArguments } = require('./download/sidecar-launch.cjs');
 
 function diagnostic(message, error) {
@@ -116,7 +117,7 @@ async function waitForSidecar() {
     }
     try {
       const health = await sidecarRequest('/health');
-      if (health.engineRevision !== '1.0.1-r1') throw Object.assign(new Error('打包的下载引擎与软件版本不一致，不能继续启动。请获取完整的 1.0.1 版本。'), { code: 'ENGINE_BUILD_MISMATCH' });
+      if (health.engineRevision !== '1.0.2-r1') throw Object.assign(new Error('打包的下载引擎与软件版本不一致，不能继续启动。请获取完整的 1.0.2 版本。'), { code: 'ENGINE_BUILD_MISMATCH' });
       return health;
     } catch (error) {
       if (error.code === 'ENGINE_BUILD_MISMATCH') throw error;
@@ -145,10 +146,6 @@ function pruneSetupTickets() {
   }
 }
 
-function setupPage(ticket) {
-  const safeTicket = String(ticket).replace(/[^a-zA-Z0-9_-]/g, '');
-  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>易下载连接 Chrome</title><style>body{font-family:"Segoe UI","Microsoft YaHei",sans-serif;background:#f6f9fc;color:#14233b;margin:0;padding:34px}main{max-width:700px;margin:auto;background:#fff;border:1px solid #d9e3ef;border-radius:18px;padding:28px;box-shadow:0 12px 36px rgba(25,67,110,.08)}h1{margin:0 0 8px;font-size:24px}p{line-height:1.7;color:#65748b}.step{display:flex;gap:14px;align-items:flex-start;border:1px solid #d7e7f5;background:#f7fbff;border-radius:12px;padding:15px;margin:12px 0}.num{display:grid;place-items:center;flex:0 0 26px;height:26px;border-radius:50%;background:#1976f3;color:#fff;font-weight:700}.status{margin-top:18px;padding:12px;border-radius:10px;background:#eaf3ff;color:#2670c7}.ok{background:#e9f8f1;color:#18764d}</style></head><body><main><h1>易下载连接 Chrome</h1><p>只需在 Chrome 中加载一次扩展，易下载会自动完成连接。你不需要复制连接码，也不需要填写网站列表。</p><div class="step"><span class="num">1</span><div><b>在 Chrome 扩展页点击“加载已解压的扩展程序”</b><p>选择易下载刚刚打开的 extension 文件夹。</p></div></div><div class="step"><span class="num">2</span><div><b>等待自动连接</b><p>扩展加载后会自动完成配对并同步已登记平台的登录状态。</p></div></div><div id="status" class="status">正在等待扩展加载……</div></main><script>const ticket=${JSON.stringify(safeTicket)};async function check(){try{const r=await fetch('/v1/browser/setup-status?ticket='+encodeURIComponent(ticket));const d=await r.json();const el=document.getElementById('status');if(d.paired){el.className='status ok';el.textContent='已连接，可以关闭此页面并回到易下载。';return}if(d.expired){el.textContent='连接已过期，请回到易下载重新点击“连接 Chrome”。';return}el.textContent='正在等待扩展加载……';}catch(_){document.getElementById('status').textContent='易下载未运行，请回到程序重新开始连接。';}setTimeout(check,1000)}check();</script></body></html>`;
-}
 
 function findChromeExecutable() {
   const candidates = [
@@ -156,7 +153,14 @@ function findChromeExecutable() {
     path.join(process.env.PROGRAMFILES || '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
     path.join(process.env['PROGRAMFILES(X86)'] || '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
   ].filter(Boolean);
-  return candidates.find(candidate => existsSync(candidate)) || null;
+  const standard = candidates.find(candidate => existsSync(candidate));
+  if (standard) return standard;
+  if (isWindows) for (const hive of ['HKCU', 'HKLM']) {
+    const registered = spawnSync('reg.exe', ['query', `${hive}\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\chrome.exe`, '/ve'], { windowsHide: true, encoding: 'utf8', timeout: 2000 });
+    const filename = registered.stdout?.match(/REG_SZ\s+([^\r\n]+)/)?.[1]?.trim().replace(/^"|"$/g, '');
+    if (filename && /chrome\.exe$/i.test(filename) && existsSync(filename)) return filename;
+  }
+  return null;
 }
 
 async function openChromeConnection() {
@@ -169,14 +173,26 @@ async function openChromeConnection() {
   const chrome = findChromeExecutable();
   if (!process.env.EASY_DOWNLOAD_SKIP_BROWSER_OPEN) {
     if (chrome) {
-      const child = spawn(chrome, ['--new-window', 'chrome://extensions/', setupUrl], { detached: true, stdio: 'ignore', windowsHide: true });
+      // The wizard opens the management tab after it has loaded. This keeps
+      // the actual install controls in front, even during a cold Chrome start.
+      const child = spawn(chrome, ['--new-window', setupUrl], { detached: true, stdio: 'ignore', windowsHide: true });
+      child.on('error', error => { const entry = setupTickets.get(ticket); if (entry) entry.error = 'Chrome 未能打开，请点击打开扩展管理页重试。'; diagnostic('Chrome setup launch failed', error); });
       child.unref();
     } else {
       await shell.openExternal(setupUrl);
     }
-    await shell.openPath(extensionDir);
   }
   return { ok: true, ticket, chromeFound: Boolean(chrome) };
+}
+
+function openChromeExtensions() {
+  const chrome = findChromeExecutable();
+  if (!chrome) throw new Error('没有找到 Chrome。请在 Chrome 地址栏输入 chrome://extensions 并回车。');
+  if (!process.env.EASY_DOWNLOAD_SKIP_BROWSER_OPEN) {
+    const child = spawn(chrome, ['chrome://extensions/'], { detached: true, stdio: 'ignore', windowsHide: true });
+    child.on('error', error => diagnostic('Chrome open failed', error)); child.unref();
+  }
+  return { ok: true, message: '已打开 Chrome 扩展管理页，请开启右上角开发者模式。' };
 }
 
 function startBrowserBridge() {
@@ -193,6 +209,31 @@ function startBrowserBridge() {
       return;
     }
     const parsedUrl = new URL(request.url, `http://127.0.0.1:${browserBridgePort}`);
+    if (request.method === 'GET' && parsedUrl.pathname.startsWith('/browser-setup-assets/')) {
+      pruneSetupTickets();
+      const name = parsedUrl.pathname.split('/').pop();
+      const files = { 'extensions.png': 'connection-02-extensions.png', 'folder.png': 'connection-03-select-folder.png' };
+      if (!setupTickets.has(parsedUrl.searchParams.get('ticket')) || !Object.hasOwn(files, name)) { response.writeHead(404); response.end(); return; }
+      const filename = path.join(root, 'docs', 'manual-assets', files[name]);
+      if (!existsSync(filename)) { response.writeHead(404); response.end(); return; }
+      const picture = readFileSync(filename); response.writeHead(200, { 'content-type': 'image/png', 'content-length': picture.length, 'cache-control': 'no-store' }); response.end(picture); return;
+    }
+    if (request.method === 'POST' && parsedUrl.pathname === '/v1/browser/setup-action') {
+      if (request.headers.origin !== `http://127.0.0.1:${browserBridgePort}` || !String(request.headers['content-type'] || '').startsWith('application/json')) { bridgeJson(response, 403, { ok: false }); return; }
+      let raw = ''; request.on('data', chunk => { raw += chunk; if (raw.length > 4096) request.destroy(); });
+      request.on('end', () => {
+        try {
+          pruneSetupTickets(); const payload = JSON.parse(raw); const entry = setupTickets.get(String(payload.ticket || ''));
+          if (!entry) { bridgeJson(response, 410, { ok: false, message: '向导已过期，请重新连接。' }); return; }
+          if (payload.action === 'open-extensions') {
+            if (!payload.automatic || !entry.opened) { openChromeExtensions(); entry.opened = true; }
+            bridgeJson(response, 200, { ok: true, message: '扩展管理页已打开；操作后可切回这个图文向导。' });
+          } else if (payload.action === 'copy-path' && !payload.automatic) {
+            clipboard.writeText(path.join(root, 'extension')); bridgeJson(response, 200, { ok: true, message: '路径已复制：在选择文件夹窗口按 Ctrl + L、Ctrl + V、回车，再点击选择文件夹。' });
+          } else bridgeJson(response, 400, { ok: false, message: '不支持的向导操作。' });
+        } catch (error) { bridgeJson(response, 400, { ok: false, message: error.message || '请重新打开向导。' }); }
+      }); return;
+    }
     if (request.method === 'GET' && parsedUrl.pathname === '/browser-setup') {
       const ticket = parsedUrl.searchParams.get('ticket') || '';
       pruneSetupTickets();
@@ -201,7 +242,7 @@ function startBrowserBridge() {
         response.end('<h1>连接已过期</h1><p>请回到易下载重新点击“连接 Chrome”。</p>');
         return;
       }
-      const html = Buffer.from(setupPage(ticket).replace("if(d.expired)", "if(d.error){el.textContent=d.error;setTimeout(check,1000);return}if(d.expired)"), 'utf8');
+      const html = Buffer.from(renderChromeSetup(ticket, path.join(root, 'extension')), 'utf8');
       response.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'content-length': html.length });
       response.end(html);
       return;
@@ -398,6 +439,9 @@ app.whenReady().then(async () => {
   ipcMain.handle('download-start', (_event, payload = {}) => downloadController.start(payload));
   ipcMain.handle('download-batch', (_event, payload = {}) => downloadController.startBatch(payload));
   ipcMain.handle('download-tasks', () => downloadController.listTasks());
+  ipcMain.handle('download-deep-verify', (_event, id) => downloadController.deepVerify(String(id)));
+  ipcMain.handle('open-chrome-extensions', () => openChromeExtensions());
+  ipcMain.handle('copy-extension-path', () => { clipboard.writeText(path.join(root, 'extension')); return { ok: true }; });
   ipcMain.handle('download-clear-history', () => downloadController.clearHistory());
   ipcMain.handle('choose-directory', async () => {
     const result = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] });
@@ -435,7 +479,7 @@ app.whenReady().then(async () => {
   });
   ipcMain.handle('browser-connection-status', () => ({ connected: browserConnected, lastSeen: browserLastSeen }));
   ipcMain.handle('open-manual', async () => {
-    const manual = path.join(root, 'docs', '易下载用户操作手册.pdf');
+    const manual = path.join(root, 'docs', '易下载用户操作手册-1.0.2.pdf');
     if (!existsSync(manual)) throw new Error('用户手册尚未打包，请重新安装易下载。');
     const error = await shell.openPath(manual);
     if (error) throw new Error(error);
@@ -454,6 +498,7 @@ app.whenReady().then(async () => {
 });
 
 app.on('before-quit', () => {
+  disposeMediaChecks();
   if (browserBridge) {
     try { browserBridge.close(); } catch (_) { /* already closed */ }
     browserBridge = null;

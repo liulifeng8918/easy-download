@@ -22,7 +22,7 @@ from vendor.life_license.storage import DpapiStorage, StorageError
 
 
 MAX_BODY_BYTES = 512 * 1024
-ENGINE_REVISION = '1.0.1-r1'
+ENGINE_REVISION = '1.0.2-r1'
 DEFAULT_PROXY = "http://127.0.0.1:7892"
 PROXY_SCHEMES = frozenset({"http", "https", "socks4", "socks5", "socks5h"})
 COMMON_PROXY_PORTS = (7890, 7891, 7892, 1080, 10808, 10809, 8080)
@@ -312,6 +312,7 @@ def make_handler(state: SidecarState):
                 self.send_json(500, {"ok": False, "code": "COOKIE_STORE_FAILED", "message": str(exc)})
                 return
             state.cookie_paired = True
+            state.downloads.invalidate_preflight()
             self.send_json(200, {"ok": True})
             return
         if not self.authorized():
@@ -509,7 +510,7 @@ def make_handler(state: SidecarState):
                     self.send_json(403, {"ok": False, "code": "NOT_ACTIVATED", "message": "该功能需要易下载专业版，请先输入激活码"})
                     return
             try:
-                task = state.downloads.create(url=source_url, engine_url=url, source_title=str(body.get("sourceTitle", "")), source_id=str(body.get("sourceId", "")), referer=str(body.get("referer") or "") or None, user_agent=str(body.get("userAgent") or "") or None, quality=str(body.get("quality", "best")), output_format=str(body.get("format", "mp4")), output_dir=str(body.get("outputDir") or state.output_dir), proxy=str(body.get("proxy", state.settings.get("proxy", ""))), auto_proxy=bool(body.get("autoProxy", state.settings.get("autoProxy", True))))
+                task = state.downloads.create(url=source_url, engine_url=url, source_title=str(body.get("sourceTitle", "")), source_id=str(body.get("sourceId", "")), referer=str(body.get("referer") or "") or None, user_agent=str(body.get("userAgent") or "") or None, quality=str(body.get("quality", "best")), output_format=str(body.get("format", "mp4")), output_dir=str(body.get("outputDir") or state.output_dir), proxy=str(body.get("proxy", state.settings.get("proxy", ""))), auto_proxy=bool(body.get("autoProxy", state.settings.get("autoProxy", True))), resolution_token=str(body.get("resolutionToken") or "") or None)
             except (OSError, ValueError) as exc:
                 self.send_json(400, {"ok": False, "code": "DOWNLOAD_INVALID", "message": str(exc)})
                 return

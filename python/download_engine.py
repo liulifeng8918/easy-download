@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import shutil
 import subprocess
 import threading
 import uuid
+import time
 from datetime import datetime
 from dataclasses import dataclass, asdict
 from pathlib import Path
@@ -14,6 +16,7 @@ from typing import Any
 from urllib.parse import urlparse
 
 from cookie_store import CookieStore
+from download_resources import DownloadBudget, resource_profile
 
 
 QUALITY_FORMATS = {
@@ -87,6 +90,15 @@ class Task:
     referer: str | None = None
     user_agent: str | None = None
     output_format: str = "mp4"
+    resolution_token: str | None = None
+    stage: str = "queued"
+    route: str = "direct"
+    fragment_concurrency: int = 1
+    downloaded_bytes: int = 0
+    total_bytes: int = 0
+    speed_bytes: float = 0
+    eta_seconds: float | None = None
+    percent: float = 0
 
     def payload(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -96,6 +108,7 @@ class Task:
         payload.pop("output_name", None)
         payload.pop("referer", None)
         payload.pop("user_agent", None)
+        payload.pop("resolution_token", None)
         return payload
 
 
@@ -118,6 +131,8 @@ class DownloadManager:
         self.cookie_store = cookie_store
         self._engine_version: str | None = None
         self._js_runtime: dict[str, str] | None | object = _UNSET
+        self._preflight_cache = {}
+        self._budget = DownloadBudget()
 
     def engine_version(self) -> str:
         if self._engine_version is not None:
@@ -230,7 +245,7 @@ class DownloadManager:
         except OSError:
             return {}
 
-    def create(self, *, url: str, quality: str, output_dir: str, output_format: str = "mp4", proxy: str = "", auto_proxy: bool = True, engine_url: str | None = None, source_title: str = "", source_id: str = "", referer: str | None = None, user_agent: str | None = None) -> Task:
+    def create(self, *, url: str, quality: str, output_dir: str, output_format: str = "mp4", proxy: str = "", auto_proxy: bool = True, engine_url: str | None = None, source_title: str = "", source_id: str = "", referer: str | None = None, user_agent: str | None = None, resolution_token: str | None = None) -> Task:
         if not TASK_URL_PATTERN.fullmatch(url.strip()):
             raise ValueError("视频链接无效")
         output = Path(output_dir).expanduser().resolve()
@@ -244,12 +259,13 @@ class DownloadManager:
             output_name = f"{title} [{source_id}]".replace("%", "%%") + ".%(ext)s"
         chosen_format = "mp3" if quality == "audio" else output_format if output_format in {"mp4", "mkv"} else "mp4"
         task = Task(str(uuid.uuid4()), url.strip(), quality, str(output), engine_url=(engine_url or url).strip(), output_name=output_name, referer=referer, user_agent=user_agent, output_format=chosen_format)
+        task.resolution_token = resolution_token
         with self._lock:
             self._tasks[task.id] = task
         threading.Thread(target=self._run, args=(task, proxy, auto_proxy), daemon=True).start()
         return task
 
-    def _build_command(self, *, url: str, quality: str, output_dir: str, proxy: str, auto_proxy: bool, preflight: bool = False, output_name: str | None = None, referer: str | None = None, user_agent: str | None = None, output_format: str = "mp4") -> tuple[list[str], dict[str, str], bool]:
+    def _build_command(self, *, url: str, quality: str, output_dir: str, proxy: str, auto_proxy: bool, preflight: bool = False, output_name: str | None = None, referer: str | None = None, user_agent: str | None = None, output_format: str = "mp4", resources: dict | None = None, compatible: bool = False, cached_info: bool = False) -> tuple[list[str], dict[str, str], bool]:
         hostname = (urlparse(url).hostname or "").lower()
         use_proxy = bool(proxy) and (not auto_proxy or any(hostname == domain or hostname.endswith("." + domain) for domain in OVERSEAS_DOMAINS))
         command = [
@@ -259,6 +275,7 @@ class DownloadManager:
             "--newline",
             "--progress",
             "--no-warnings",
+            "--encoding", "utf-8",
             "--socket-timeout", "30",
             "--no-playlist",
             "--ffmpeg-location", str(self.ffmpeg),
@@ -272,25 +289,21 @@ class DownloadManager:
             command.extend(["--referer", referer])
         if user_agent:
             command.extend(["--user-agent", user_agent])
-        if output_name:
-            command.extend(["--encoding", "utf-8"])
         if use_proxy:
             environment["http_proxy"] = proxy
             environment["https_proxy"] = proxy
-        if any(hostname == domain or hostname.endswith("." + domain) for domain in YIFAN_MEDIA_HOSTS):
-            # 爱壹帆的公开流由大量 10 秒 HLS 分片组成。串行下载时，
-            # 某个 CDN 分片的重试会让 30 分钟视频长时间看起来没有进度。
-            # 限制单片重试并并行取片，失败时尽快反馈，不无限等待。
-            command.extend([
-                "--concurrent-fragments", "4",
-                "--fragment-retries", "3",
-                "--retry-sleep", "fragment:exp=1:10",
-                "--abort-on-unavailable-fragments",
-            ])
+        if not preflight:
+            profile = resources or {**resource_profile(), "fragments": 1}
+            command.extend(["--concurrent-fragments", str(1 if compatible else profile["fragments"]), "--retries", "3", "--fragment-retries", "3", "--retry-sleep", "fragment:exp=1:10", "--abort-on-unavailable-fragments"])
+            # Range chunking is enabled only on the validated HTTP routes.
+            if not compatible and (hostname == "eporner.com" or hostname.endswith(".eporner.com")):
+                command.extend(["--http-chunk-size", str(profile["chunk_mib"]) + "M"])
         if preflight:
             command.extend(["--skip-download", "--dump-single-json", url])
         else:
-            command.extend(["--print", "before_dl:__ED_EXPECTED__%(filename)s", "--print", "after_move:__ED_OUTPUT__%(filepath)s", "-o", str(Path(output_dir) / (output_name or "%(title).150B [%(id).60B].%(ext)s")), *format_args(quality, output_format), url])
+            progress = 'download:__ED_PROGRESS__{"downloaded":%(progress.downloaded_bytes|0)j,"total":%(progress.total_bytes,progress.total_bytes_estimate|0)j,"speed":%(progress.speed|0)j,"eta":%(progress.eta|0)j}'
+            command.extend(["--progress-template", progress, "--print", "before_dl:__ED_EXPECTED__%(filename)s", "--print", "after_move:__ED_OUTPUT__%(filepath)s", "-o", str(Path(output_dir) / (output_name or "%(title).150B [%(id).60B].%(ext)s")), *format_args(quality, output_format)])
+            command.extend(["--load-info-json", "-"] if cached_info else [url])
         return command, environment, use_proxy
 
     def extract_subtitles(self, *, url: str, output_dir: str, proxy: str = "", auto_proxy: bool = True) -> Path:
@@ -378,6 +391,33 @@ class DownloadManager:
             except OSError:
                 pass
 
+    def invalidate_preflight(self) -> None:
+        with self._lock:
+            self._preflight_cache = {}
+
+    def _cache_info(self, info: dict, fingerprint: tuple) -> str | None:
+        # Windows standalone yt-dlp may read stdin in the legacy console
+        # codepage. ASCII JSON preserves all Unicode without a second decode.
+        raw = json.dumps(info, ensure_ascii=True)
+        if len(raw.encode("utf-8")) > 4 * 1024 * 1024 or not info.get("formats") and not info.get("url"):
+            return None
+        token = uuid.uuid4().hex
+        with self._lock:
+            now = time.monotonic()
+            cache = {key: value for key, value in getattr(self, "_preflight_cache", {}).items() if value[0] > now}
+            while len(cache) >= 16:
+                cache.pop(next(iter(cache)))
+            cache[token] = (now + 60, fingerprint, raw)
+            self._preflight_cache = cache
+        return token
+
+    def _take_info(self, task: Task, proxy: str, auto_proxy: bool) -> str | None:
+        with self._lock:
+            entry = getattr(self, "_preflight_cache", {}).pop(task.resolution_token, None)
+        if entry and entry[0] > time.monotonic() and entry[1] == (task.url, task.quality, proxy, auto_proxy):
+            return entry[2]
+        return None
+
     def preflight(self, *, url: str, quality: str, proxy: str = "", auto_proxy: bool = True) -> dict[str, Any]:
         """Check a link before creating a task, without writing media files."""
         clean_url = url.strip()
@@ -397,6 +437,7 @@ class DownloadManager:
             output = (result.stdout or "") + "\n" + (result.stderr or "")
             if result.returncode == 0:
                 title = ""
+                token = None
                 for line in reversed(output.splitlines()):
                     try:
                         payload = json.loads(line)
@@ -404,8 +445,9 @@ class DownloadManager:
                         continue
                     if isinstance(payload, dict):
                         title = str(payload.get("title") or "").strip()
+                        token = self._cache_info(payload, (clean_url, quality, proxy, auto_proxy))
                         break
-                return {"ready": True, "code": "READY", "message": f"已识别到视频{('：' + title) if title else ''}，正在加入下载。"}
+                return {"ready": True, "code": "READY", "resolutionToken": token, "message": f"已识别到视频{('：' + title) if title else ''}，正在加入下载。"}
             guidance = classify_download_error(output, hostname=hostname, proxy_configured=use_proxy)
             return {"ready": False, **guidance}
         except subprocess.TimeoutExpired:
@@ -417,34 +459,86 @@ class DownloadManager:
             cleanup_cookie()
 
     def _run(self, task: Task, proxy: str, auto_proxy: bool) -> None:
+        with self._lock:
+            if not hasattr(self, "_budget"):
+                self._budget = DownloadBudget()
+        with self._budget.reserve() as resources:
+            self._run_reserved(task, proxy, auto_proxy, resources)
+
+    @staticmethod
+    def _number(value: Any) -> float:
+        try:
+            result = float(value)
+            return max(0, result) if math.isfinite(result) else 0
+        except (ValueError, TypeError):
+            return 0
+
+    def _run_reserved(self, task: Task, proxy: str, auto_proxy: bool, resources: dict) -> None:
         engine_url = task.engine_url or task.url
         hostname = (urlparse(engine_url).hostname or "").lower()
-        command, environment, use_proxy = self._build_command(url=engine_url, quality=task.quality, output_dir=task.output_dir, proxy=proxy, auto_proxy=auto_proxy, output_name=task.output_name, referer=task.referer, user_agent=task.user_agent, output_format=task.output_format)
+        cached = self._take_info(task, proxy, auto_proxy)
+        arguments = dict(url=engine_url, quality=task.quality, output_dir=task.output_dir, proxy=proxy, auto_proxy=auto_proxy, output_name=task.output_name, referer=task.referer, user_agent=task.user_agent, output_format=task.output_format, resources=resources, cached_info=bool(cached))
+        command, environment, use_proxy = self._build_command(**arguments)
         cleanup_cookie = lambda: None
         before_files = self._media_snapshot(Path(task.output_dir))
+        task.route = "proxy" if use_proxy else "direct"
+        task.fragment_concurrency = resources["fragments"]
         try:
             cookie_file, cleanup_cookie = self.cookie_store.temporary_file()
-            if cookie_file:
-                command[1:1] = ["--cookies", cookie_file]
-            process = subprocess.Popen(command, cwd=self.project_root, env=environment, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
-            with self._lock:
-                task.status = "running"
-                task.pid = process.pid
-            assert process.stdout is not None
             reported_file = None
             expected_file = None
-            for line in process.stdout:
-                message = line.strip()
-                if message.startswith("__ED_OUTPUT__"):
-                    reported_file = str(Path(message[len("__ED_OUTPUT__"):]).resolve())
-                    continue
-                if message.startswith("__ED_EXPECTED__"):
-                    expected_file = str(Path(message[len("__ED_EXPECTED__"):]).resolve())
-                    continue
-                if message:
-                    with self._lock:
-                        task.progress = message[-500:]
-            result = process.wait()
+            for attempt in range(2):
+                if attempt:
+                    command, environment, _ = self._build_command(**arguments, compatible=True)
+                    task.fragment_concurrency = 1
+                    task.stage = "retrying"
+                    task.progress = "网络不稳定，正在以兼容模式重试（不更改网络线路）…"
+                if cookie_file:
+                    command[1:1] = ["--cookies", cookie_file]
+                process = subprocess.Popen(command, cwd=self.project_root, env=environment, stdin=subprocess.PIPE if cached else subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace", creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+                with self._lock:
+                    task.status = "running"
+                    task.pid = process.pid
+                    if not attempt:
+                        task.stage = "resolving"
+                if cached:
+                    try:
+                        process.stdin.write(cached)
+                        process.stdin.close()
+                    except (BrokenPipeError, OSError):
+                        pass
+                assert process.stdout is not None
+                for line in process.stdout:
+                    message = line.strip()
+                    if message.startswith("__ED_OUTPUT__"):
+                        reported_file = str(Path(message[len("__ED_OUTPUT__"):]).resolve())
+                        continue
+                    if message.startswith("__ED_EXPECTED__"):
+                        expected_file = str(Path(message[len("__ED_EXPECTED__"):]).resolve())
+                        continue
+                    if message.startswith("__ED_PROGRESS__"):
+                        try:
+                            data = json.loads(message[len("__ED_PROGRESS__"):])
+                            with self._lock:
+                                task.downloaded_bytes = int(self._number(data.get("downloaded")))
+                                task.total_bytes = int(self._number(data.get("total")))
+                                task.speed_bytes = self._number(data.get("speed"))
+                                task.eta_seconds = self._number(data.get("eta")) if data.get("eta") else None
+                                task.percent = min(100, 100 * task.downloaded_bytes / task.total_bytes) if task.total_bytes else 0
+                                task.stage = "downloading"
+                        except (ValueError, AttributeError, TypeError):
+                            pass
+                        continue
+                    if message:
+                        with self._lock:
+                            task.progress = message[-500:]
+                            if any(tag in message for tag in ("[Merger]", "[ExtractAudio]", "[VideoRemuxer]")):
+                                task.stage = "merging"
+                result = process.wait()
+                text = task.progress.lower()
+                can_fallback = any(term in text for term in ("fragment", "timed out", "connection reset", "http error 416", "http error 429", "requested range")) and not any(term in text for term in ("403", "forbidden", "captcha", "cookie", "login"))
+                if result == 0 or not can_fallback:
+                    break
             after_files = self._media_snapshot(Path(task.output_dir))
             changed_files = [
                 path for path, metadata in after_files.items()
@@ -472,6 +566,8 @@ class DownloadManager:
                     own_file = changed_files[0]
                 if result == 0 and own_file:
                     task.status = "completed"
+                    task.stage = "downloaded"
+                    task.percent = 100
                     task.output_path = own_file
                 elif result == 0:
                     task.status = "failed"
@@ -484,4 +580,5 @@ class DownloadManager:
                 task.status = "failed"
                 task.error = classify_download_error(str(exc), hostname=hostname, proxy_configured=use_proxy)["message"]
         finally:
+            task.pid = None
             cleanup_cookie()
