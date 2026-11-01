@@ -6,7 +6,7 @@
 
 - 新用户：`EasyDownload-1.0.2-x64-portable.zip`，解压整个文件夹，双击 `易下载.exe`。不需要另外安装 Python、Node.js 或 Electron。
 - 已有 1.0.1 用户：`EasyDownload-1.0.2-update.zip`。先退出软件，再把 `resources` 合并到原目录，保留 `user-data`。原目录升级不重置已有 Chrome 连接和设置。
-- PDF：`易下载用户操作手册-1.0.2.pdf`，从解压到 Chrome 连接、下载完成的图文操作步骤。
+- PDF：`EasyDownload-1.0.2-User-Manual.pdf`（中文手册），从解压到 Chrome 连接、下载完成的图文操作步骤。软件内和源码目录中的原文件名为“易下载用户操作手册-1.0.2.pdf”。
 - `.sha256`：对应 ZIP 的校验文件。
 
 本次发布的是绿色免安装版，不是旧版安装器。不要同时运行多个版本。
