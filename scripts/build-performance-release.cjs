@@ -2,7 +2,10 @@
 const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
 const {spawnSync}=require('node:child_process');
 const root=path.resolve(__dirname,'..'),version=JSON.parse(fs.readFileSync(path.join(root,'package.json'))).version;
-const base=path.join(root,'release-1.0.1','win-unpacked'),payload=path.join(root,'build',`performance-${version}-payload`),patch=path.join(root,'build',`performance-${version}-update`),release=path.join(root,`release-${version}`);
+const label=String(process.env.EASY_DOWNLOAD_BUILD_LABEL||'');
+if(label&&!/^[A-Za-z0-9-]{1,60}$/.test(label))throw new Error('Invalid build label');
+const suffix=label?'-'+label:'';
+const base=path.join(root,'release-1.0.1','win-unpacked'),payload=path.join(root,'build',`performance-${version}${suffix}-payload`),patch=path.join(root,'build',`performance-${version}${suffix}-update`),release=path.join(root,`release-${version}${suffix}`);
 const hash=file=>crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 const quote=s=>"'"+s.replaceAll("'","''")+"'";
 if(fs.existsSync(payload)||fs.existsSync(patch))throw new Error('Preserve existing build directories; use a new build version');
@@ -23,5 +26,5 @@ fs.writeFileSync(path.join(patch,'更新说明.txt'),'易下载 '+version+' 更�
 const archive=path.join(release,`EasyDownload-${version}-update.zip`);
 const zip=spawnSync('powershell.exe',['-NoProfile','-Command',`$ErrorActionPreference='Stop'; Compress-Archive -Path ${quote(path.join(patch,'*'))} -DestinationPath ${quote(archive)} -CompressionLevel Optimal`],{windowsHide:true,encoding:'utf8'});
 if(zip.status!==0)throw new Error(zip.stderr);fs.writeFileSync(archive+'.sha256',hash(archive)+'  '+path.basename(archive)+'\r\n');
-const built=spawnSync(process.execPath,[path.join(root,'scripts','build-portable-package.cjs')],{cwd:root,env:{...process.env,PORTABLE_PAYLOAD_DIR:payload,PORTABLE_OUTPUT_DIR:release},windowsHide:true,encoding:'utf8'});
+const built=spawnSync(process.execPath,[path.join(root,'scripts','build-portable-package.cjs')],{cwd:root,env:{...process.env,PORTABLE_PAYLOAD_DIR:payload,PORTABLE_OUTPUT_DIR:release,PORTABLE_STAGING_LABEL:label},windowsHide:true,encoding:'utf8'});
 if(built.status!==0)throw new Error(built.stderr||built.stdout);console.log(built.stdout);console.log(JSON.stringify({files:manifest.files.length,payload,patch,release}));

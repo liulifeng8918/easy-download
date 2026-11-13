@@ -35,7 +35,9 @@ function main() {
     if (!fs.existsSync(file)) throw new Error(`Missing packaged runtime: ${file}`);
   }
 
-  const staging = path.join(root, 'build', `portable-${version}-x64${suffix}`);
+  const stagingLabel = String(process.env.PORTABLE_STAGING_LABEL || '');
+  if (stagingLabel && !/^[A-Za-z0-9-]{1,60}$/.test(stagingLabel)) throw new Error('Invalid staging label');
+  const staging = path.join(root, 'build', `portable-${version}-x64${suffix}${stagingLabel ? '-' + stagingLabel : ''}`);
   fs.mkdirSync(outputDir, { recursive: true });
   const archive = path.join(outputDir, `EasyDownload-${version}-x64-portable${suffix}.zip`);
   if (fs.existsSync(staging)) throw new Error(`Staging exists; preserve it before rebuilding: ${staging}`);
