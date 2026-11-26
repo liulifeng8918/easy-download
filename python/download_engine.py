@@ -53,6 +53,8 @@ def classify_download_error(message: str, *, hostname: str = "", proxy_configure
     """Turn engine/network errors into language a normal user can act on."""
     text = (message or "").lower()
     name = platform_name(hostname)
+    if name == "YouTube" and any(term in text for term in ("n challenge solving failed", "nsig extraction failed", "signature solving failed", "only images are available", "error solving n challenge")):
+        return {"code": "YOUTUBE_COMPATIBILITY_FAILED", "message": "YouTube 播放脚本解析失败，未取得可下载的视频流；这不代表网站没有该画质。请更新易下载的 YouTube 解析组件，无需反复登录或降低画质。"}
     if "unsupported url" in text or "no suitable extractor" in text:
         return {"code": "UNSUPPORTED_URL", "message": f"{name}当前链接类型暂未通过支持验证。请复制具体的视频播放页地址，而不是网站首页、搜索页或个人主页。"}
     if "not a bot" in text or "captcha" in text or "confirm you're" in text or "confirm you’re" in text:
@@ -64,7 +66,7 @@ def classify_download_error(message: str, *, hostname: str = "", proxy_configure
     if "http error 403" in text or "forbidden" in text or "captcha" in text or "bot" in text:
         return {"code": "ACCESS_RESTRICTED", "message": f"{name}拒绝了当前下载请求（常见于页面验证、短时效媒体地址或请求上下文不完整）。请重试；如果浏览器也无法播放，再登录或完成网站验证。"}
     if "requested format is not available" in text or "format is not available" in text:
-        return {"code": "FORMAT_UNAVAILABLE", "message": "这个页面没有当前选择的画质。请改选“最佳画质”或较低画质后重试。"}
+        return {"code": "FORMAT_UNAVAILABLE", "message": "当前下载请求未取得所选画质，不代表网站没有该画质。可尝试最佳画质；若浏览器能播放但仍失败，请检查解析组件兼容性。"}
     if "fragment" in text and any(term in text for term in ("unable", "failed", "unavailable", "http error")):
         return {"code": "MEDIA_FRAGMENT_FAILED", "message": f"{name}的视频分片访问不稳定，下载已停止。请稍后重试；如果反复失败，请降低画质或检查代理。"}
     if any(term in text for term in ("video is unavailable", "not found", "private video", "this video is unavailable")):
@@ -268,8 +270,11 @@ class DownloadManager:
     def _build_command(self, *, url: str, quality: str, output_dir: str, proxy: str, auto_proxy: bool, preflight: bool = False, output_name: str | None = None, referer: str | None = None, user_agent: str | None = None, output_format: str = "mp4", resources: dict | None = None, compatible: bool = False, cached_info: bool = False) -> tuple[list[str], dict[str, str], bool]:
         hostname = (urlparse(url).hostname or "").lower()
         use_proxy = bool(proxy) and (not auto_proxy or any(hostname == domain or hostname.endswith("." + domain) for domain in OVERSEAS_DOMAINS))
+        youtube = hostname == "youtube.com" or hostname.endswith(".youtube.com") or hostname == "youtu.be" or hostname.endswith(".youtu.be")
+        youtube_engine = self.ytdlp.parent / "yt-dlp-youtube.exe"
+        selected_engine = youtube_engine if youtube and youtube_engine.is_file() else self.ytdlp
         command = [
-            str(self.ytdlp),
+            str(selected_engine),
             "--ignore-config",
             "--proxy", proxy if use_proxy else "",
             "--newline",
@@ -281,6 +286,10 @@ class DownloadManager:
             "--ffmpeg-location", str(self.ffmpeg),
         ]
         runtime = self.js_runtime()
+        if youtube:
+            # Preserve actionable JS/parser warnings for classification. Do not
+            # turn a missing media URL into a claim that the website lacks 720p.
+            command.remove("--no-warnings")
         environment = os.environ.copy()
         if runtime:
             command.extend(["--js-runtimes", runtime["name"]])

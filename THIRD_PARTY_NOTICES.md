@@ -6,6 +6,7 @@
 | --- | --- | --- |
 | Electron / Chromium | 桌面界面 | Electron 为 MIT，Chromium 及其依赖有各自许可。完整发行包保留 `LICENSE.electron.txt`、`LICENSES.chromium.html`；源码：https://github.com/electron/electron |
 | yt-dlp 2026.10.26 | 网站解析与传输 | 上游项目为 Unlicense，Windows standalone 包中的依赖另有许可。https://github.com/yt-dlp/yt-dlp/tree/2026.10.26 ，上游发行包：https://github.com/yt-dlp/yt-dlp/releases/tag/2026.10.26 |
+| yt-dlp 2026.11.23（本机 YouTube 兼容补丁） | 仅 YouTube / youtu.be 使用的独立解析器，其他平台保留原引擎 | 上游及独立依赖保留其许可。源码：https://github.com/yt-dlp/yt-dlp/tree/2026.11.23 ，发行包及依赖声明：https://github.com/yt-dlp/yt-dlp/releases/tag/2026.11.23 。`yt-dlp-youtube.exe` SHA-256：`622ed48023cac1daa52a3bf3a6ac38f03514de214b5f0fa069389fd0f6d17e5c`。 |
 | FFmpeg 9.0.1 essentials / gyan.dev | 合并、检查声画、封装字幕 | 本次二进制带 `--enable-gpl --enable-version3`，按 GPLv3 分发，不按 LGPL 描述。上游源码：https://github.com/FFmpeg/FFmpeg/tree/n9.0.1 ，构建提供方：https://www.gyan.dev/ffmpeg/builds/ ，其静态外部库保留各自许可。|
 | Node.js v22.14.0 | 网页解析兼容脚本 | MIT 及随附第三方许可。源码与完整许可：https://github.com/nodejs/node/tree/v22.14.0 |
 | CPython 3.11.9 | 本机下载服务运行时 | Python Software Foundation 许可及第三方声明。https://github.com/python/cpython/tree/v3.11.9 |

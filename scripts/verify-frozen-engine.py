@@ -18,6 +18,7 @@ def constants(value):
         yield value
 
 engine = set(constants(pyz.extract('download_engine')))
+assert {'yt-dlp-youtube.exe', 'YOUTUBE_COMPATIBILITY_FAILED'} <= engine, 'Frozen YouTube compatibility patch is stale'
 assert {'--progress', '--concurrent-fragments', '--abort-on-unavailable-fragments'} <= engine, 'Frozen HLS/progress logic is stale'
 assert {'--encoding','before_dl:__ED_EXPECTED__%(filename)s'} <= engine, 'Frozen existing-file/encoding logic is stale'
 assert {'--http-chunk-size', '--load-info-json', '--progress-template'} <= engine, 'Frozen performance/cache logic is stale'

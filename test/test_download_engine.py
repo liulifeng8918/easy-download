@@ -10,6 +10,23 @@ from download_engine import DownloadManager, Task, classify_download_error
 
 
 class DownloadHistoryTests(unittest.TestCase):
+    def test_youtube_parser_failure_is_not_a_resolution_or_login_error(self):
+        raw = 'n challenge solving failed. See cookies documentation. Only images are available. Requested format is not available'
+        result = classify_download_error(raw, hostname='www.youtube.com')
+        self.assertEqual(result['code'], 'YOUTUBE_COMPATIBILITY_FAILED')
+        self.assertIn('不代表网站没有', result['message'])
+
+    def test_youtube_engine_update_does_not_replace_other_platform_engines(self):
+        with tempfile.TemporaryDirectory() as directory:
+            manager = self.make_manager(directory)
+            dedicated = manager.ytdlp.parent / 'yt-dlp-youtube.exe'
+            dedicated.parent.mkdir(parents=True, exist_ok=True)
+            dedicated.touch()
+            for url, expected in [('https://www.youtube.com/watch?v=test', dedicated), ('https://youtu.be/test', dedicated), ('https://youtube.com.evil.example/test', manager.ytdlp), ('https://www.bilibili.com/video/test', manager.ytdlp), ('https://www.iyf.tv/play/test', manager.ytdlp)]:
+                command, _, _ = manager._build_command(url=url, quality='720', output_dir=directory, proxy='', auto_proxy=True)
+                self.assertEqual(command[0], str(expected))
+                self.assertEqual('--no-warnings' not in command, expected == dedicated)
+
     def test_browser_media_filename_is_safe_and_hidden_from_payload(self):
         with tempfile.TemporaryDirectory() as directory:
             manager = self.make_manager(directory)
