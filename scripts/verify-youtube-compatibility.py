@@ -35,6 +35,8 @@ try:
     if not a.download_dir:
         try:
             info = json.loads(result.stdout)
+            if not isinstance(info, dict):
+                info = {}
             report.update(id=info.get('id'), duration=info.get('duration'),
                           videoHeights=sorted({f['height'] for f in info.get('formats', []) if f.get('height') and f.get('vcodec') not in (None, 'none')}))
         except ValueError:

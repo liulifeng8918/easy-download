@@ -2,7 +2,7 @@
 
 易下载是一个 Windows 本地视频下载工具：粘贴链接，或在 Chrome 页面右键发送到易下载，选择画质、格式和保存目录后下载。
 
-当前正式版本：**1.0.3** · Windows x64 · GPLv3
+当前正式版本：**1.0.4** · Windows x64 · GPLv3
 
 ## 持续更新，免费版持续开源
 
@@ -14,24 +14,33 @@
 
 下载入口：
 
-- [最新版绿色包：解压后双击易下载.exe](https://github.com/liulifeng8918/easy-download/releases/download/v1.0.3/EasyDownload-1.0.3-x64-portable.zip)
-- [已有 1.0.1 / 1.0.2 用户的原目录更新包](https://github.com/liulifeng8918/easy-download/releases/download/v1.0.3/EasyDownload-1.0.3-update.zip)
-- [PDF 图文操作手册](https://github.com/liulifeng8918/easy-download/releases/download/v1.0.3/EasyDownload-1.0.3-User-Manual.pdf)
-- [完整 Release 页面及 SHA-256 校验文件](https://github.com/liulifeng8918/easy-download/releases/tag/v1.0.3)
+- [最新版绿色包：解压后双击易下载.exe](https://github.com/liulifeng8918/easy-download/releases/download/v1.0.4/EasyDownload-1.0.4-x64-portable.zip)
+- [已有 1.0.1–1.0.3 用户的原目录更新包](https://github.com/liulifeng8918/easy-download/releases/download/v1.0.4/EasyDownload-1.0.4-update.zip)
+- [PDF 图文操作手册](https://github.com/liulifeng8918/easy-download/releases/download/v1.0.4/EasyDownload-1.0.4-User-Manual.pdf)
+- [完整 Release 页面及 SHA-256 校验文件](https://github.com/liulifeng8918/easy-download/releases/tag/v1.0.4)
 
-本次正式发布提供绿色免安装版，不要把旧版安装包误认为 1.0.3。只从本仓库 Releases 下载官方发布文件。
+本次正式发布提供绿色免安装版，不要把旧版安装包误认为 1.0.4。只从本仓库 Releases 下载官方发布文件。
 
 ## 下载使用
 
 新用户下载绿色版 ZIP，解压整个文件夹后双击 `易下载.exe`，不需要另外安装 Python、Node.js 或 Electron。请勿只复制其中的 EXE。
 
-已有 1.0.1 / 1.0.2 用户：先退出软件，再把更新包的 `resources` 文件夹合并到原来的绿色版目录；保留原目录的 `user-data`，以保留设置和 Chrome 连接。不要同时运行两个版本。
+已有 1.0.1–1.0.3 用户：先退出软件，再把更新包的 `resources` 文件夹合并到原来的绿色版目录；保留原目录的 `user-data`，以保留设置和 Chrome 连接。不要同时运行两个版本。
 
 单个链接下载免费；批量下载、字幕处理、自动整理等专业工作流需要专业版激活码。
 
 当前已验证的特殊站点路线还包括爱壹帆（`yifan.tv` / `iyf.tv`）公开播放页。网站要求验证时，由用户在正常网站窗口完成；不绕过验证码、DRM 或付费权限。
 
-### 1.0.3 更新重点
+### 1.0.4 更新重点
+
+- 修复 YouTube 播放脚本解析失败、只能取得预览图，随后误报“没有所选画质”的问题。
+- 内置独立的 YouTube 解析组件 2026.11.23，仅用于 youtube.com / youtu.be；其它平台保留原引擎。
+- 保留解析警告并区分兼容错误与画质不可用，不再笼统要求反复登录或降低画质。
+- 2026-11-27 用户样例已完成 1280×720、约 4 分 57 秒的整段下载，含音轨，整段解码通过；不承诺所有链接永久可用。
+
+详见 [1.0.4 更新说明](docs/2026-11-27-1.0.4-release.md) 和 [验收记录](docs/2026-11-27-1.0.4-acceptance.md)。
+
+### 仍包含 1.0.3 的爱壹帆修复
 
 - 修复爱壹帆 `/play/编号`、`/play?id=编号` 被错误拒绝，或错误套用旧接口的问题。
 - 复制链接与浏览器下载入口共用新适配；保留原 `watch?v=编号` 路线。
